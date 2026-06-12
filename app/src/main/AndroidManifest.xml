@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Full-screen alarm screen over the lock screen. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Required for ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS in the reliability setup. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Foreground service while ringing (audio playback type). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -48,6 +50,7 @@
              recents, and is single-instance so re-fires reuse it. -->
         <activity
             android:name=".ring.RingActivity"
+            android:directBootAware="true"
             android:exported="false"
             android:launchMode="singleInstance"
             android:excludeFromRecents="true"
@@ -57,33 +60,40 @@
 
         <service
             android:name=".ring.RingService"
+            android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
         <!-- Fired by setAlarmClock; targeted by explicit intent so it needs no intent-filter. -->
         <receiver
             android:name=".scheduling.AlarmReceiver"
+            android:directBootAware="true"
             android:exported="false" />
 
         <!-- Fired by exact one-shot timer expiries. -->
         <receiver
             android:name=".scheduling.TimerReceiver"
+            android:directBootAware="true"
             android:exported="false" />
 
         <!-- Upcoming-notification lead trigger + its Skip action (DESIGN.md §7). Explicit intents. -->
         <receiver
             android:name=".scheduling.UpcomingReceiver"
+            android:directBootAware="true"
             android:exported="false" />
 
         <!-- Re-materializes alarms after events that clear the OS alarm registry (DESIGN.md §12). -->
         <receiver
             android:name=".scheduling.RescheduleReceiver"
+            android:directBootAware="true"
             android:exported="false">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>
         </receiver>
 

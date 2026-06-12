@@ -50,26 +50,48 @@ class Ringer(private val context: Context) {
     }
 
     private fun startSound(settings: RingSettings) {
-        val uri: Uri = settings.soundUri?.let(Uri::parse)
-            ?: RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
-            ?: Settings.System.DEFAULT_ALARM_ALERT_URI
-        player = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build(),
-            )
-            setDataSource(context, uri)
-            isLooping = true
-            if (settings.volumeRampSeconds > 0) setVolume(0f, 0f)
-            setOnPreparedListener { mp ->
-                mp.start()
-                if (settings.volumeRampSeconds > 0) rampVolume(mp, settings.volumeRampSeconds)
-            }
-            prepareAsync()
+        val fallbackUri = defaultAlarmUri()
+        val uri = settings.soundUri?.let(Uri::parse) ?: fallbackUri
+        if (!startPlayer(uri, settings, fallbackUri.takeIf { it != uri })) {
+            startPlayer(fallbackUri, settings, fallbackUri = null)
         }
     }
+
+    private fun startPlayer(uri: Uri, settings: RingSettings, fallbackUri: Uri?): Boolean {
+        val nextPlayer = runCatching {
+            MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+                setDataSource(context, uri)
+                isLooping = true
+                if (settings.volumeRampSeconds > 0) setVolume(0f, 0f)
+                setOnPreparedListener { mp ->
+                    mp.start()
+                    if (settings.volumeRampSeconds > 0) rampVolume(mp, settings.volumeRampSeconds)
+                }
+                setOnErrorListener { mp, _, _ ->
+                    if (player === mp) player = null
+                    runCatching { mp.release() }
+                    if (fallbackUri != null) startPlayer(fallbackUri, settings, fallbackUri = null)
+                    true
+                }
+                prepareAsync()
+            }
+        }.getOrElse {
+            if (fallbackUri != null) return startPlayer(fallbackUri, settings, fallbackUri = null)
+            return false
+        }
+        player = nextPlayer
+        return true
+    }
+
+    private fun defaultAlarmUri(): Uri =
+        RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
+            ?: Settings.System.DEFAULT_ALARM_ALERT_URI
 
     /** Linearly ramp player volume 0→1 over [seconds] (DESIGN.md §6 gradual-volume option). */
     private fun rampVolume(mp: MediaPlayer, seconds: Int) {

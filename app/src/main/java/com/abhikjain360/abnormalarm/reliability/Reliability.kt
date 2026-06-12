@@ -3,10 +3,10 @@ package com.abhikjain360.abnormalarm.reliability
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.net.toUri
 
 /**
  * Device-aware background-reliability helpers (DESIGN.md §12). Stock-Android-first, with OEM
@@ -34,7 +34,7 @@ object Reliability {
         @Suppress("BatteryLife")
         val intent = Intent(
             Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-            Uri.parse("package:${context.packageName}"),
+            "package:${context.packageName}".toUri(),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (!tryStart(context, intent)) openAppInfo(context)
     }
@@ -54,7 +54,7 @@ object Reliability {
     fun openAppInfo(context: Context) {
         val intent = Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.parse("package:${context.packageName}"),
+            "package:${context.packageName}".toUri(),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         tryStart(context, intent)
     }

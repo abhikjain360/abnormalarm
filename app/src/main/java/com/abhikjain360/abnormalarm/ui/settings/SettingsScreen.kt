@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlarmManager
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abhikjain360.abnormalarm.appContainer
@@ -262,7 +262,7 @@ private fun ReliabilitySection() {
         Button(onClick = {
             val intent = Intent(
                 Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                Uri.parse("package:${context.packageName}"),
+                "package:${context.packageName}".toUri(),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             runCatching { context.startActivity(intent) }
                 .onFailure { Reliability.openAppInfo(context) }

@@ -1,5 +1,6 @@
 package com.abhikjain360.abnormalarm.scheduling
 
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -13,6 +14,7 @@ import com.abhikjain360.abnormalarm.domain.model.TimerState
 class TimerScheduler(private val context: Context) {
     private val alarmManager: AlarmManager = context.getSystemService(AlarmManager::class.java)
 
+    @SuppressLint("MissingPermission")
     fun schedule(timer: Timer): Long? {
         if (timer.state != TimerState.RUNNING) {
             cancel(timer.id)
@@ -28,6 +30,7 @@ class TimerScheduler(private val context: Context) {
             AlarmManager.AlarmClockInfo(fireAt, showIntent()),
             firePendingIntent(timer.id, requestedAt),
         )
+        ScheduleMirror.upsertTimer(context, timer)
         return fireAt
     }
 
@@ -36,6 +39,7 @@ class TimerScheduler(private val context: Context) {
             alarmManager.cancel(it)
             it.cancel()
         }
+        ScheduleMirror.removeTimer(context, timerId)
     }
 
     suspend fun rescheduleAll(repository: TimerRepository) {

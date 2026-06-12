@@ -21,18 +21,36 @@ class RescheduleReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
+            Intent.ACTION_USER_UNLOCKED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
             -> {
                 val pending = goAsync()
-                val container = context.applicationContext.appContainer
+                val appContext = context.applicationContext
                 CoroutineScope(Dispatchers.Default).launch {
                     try {
+                        if (!DirectBoot.isUserUnlocked(appContext)) {
+                            val alarmScheduler = AlarmScheduler(appContext)
+                            val timerScheduler = TimerScheduler(appContext)
+                            ScheduleMirror.getAlarms(appContext)
+                                .filter { it.enabled }
+                                .forEach { alarmScheduler.schedule(it) }
+                            ScheduleMirror.getTimers(appContext)
+                                .filter { it.state == com.abhikjain360.abnormalarm.domain.model.TimerState.RUNNING }
+                                .forEach { timerScheduler.schedule(it) }
+                            return@launch
+                        }
+                        val container = appContext.appContainer
+                        ScheduleMirror.reconcileToRepositories(
+                            appContext,
+                            container.alarmRepository,
+                            container.timerRepository,
+                        )
                         container.alarmScheduler.rescheduleAll(container.alarmRepository)
                         container.timerScheduler.rescheduleAll(container.timerRepository)
                         // Roll the calendar horizon forward and reconcile after the registry was cleared.
-                        com.abhikjain360.abnormalarm.data.calendar.CalendarSyncWorker.syncNow(context)
+                        com.abhikjain360.abnormalarm.data.calendar.CalendarSyncWorker.syncNow(appContext)
                     } finally {
                         pending.finish()
                     }

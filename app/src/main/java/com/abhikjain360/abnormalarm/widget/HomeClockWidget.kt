@@ -12,6 +12,7 @@ import android.widget.RemoteViews
 import com.abhikjain360.abnormalarm.MainActivity
 import com.abhikjain360.abnormalarm.R
 import com.abhikjain360.abnormalarm.appContainer
+import com.abhikjain360.abnormalarm.scheduling.DirectBoot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,9 +55,6 @@ class HomeClockWidget : AppWidgetProvider() {
         private const val ACTION_REFRESH = "com.abhikjain360.abnormalarm.action.WIDGET_REFRESH"
         private const val REQUEST_REFRESH = 0x7100
         private const val REQUEST_OPEN_APP = 0x7101
-        private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-        private val weekdayFormatter = DateTimeFormatter.ofPattern("EEE HH:mm", Locale.getDefault())
-        private val dateFormatter = DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.getDefault())
 
         fun updateAll(context: Context) {
             CoroutineScope(Dispatchers.Default).launch { updateAllNow(context.applicationContext) }
@@ -72,6 +70,7 @@ class HomeClockWidget : AppWidgetProvider() {
         }
 
         private suspend fun updateAllNow(context: Context) {
+            if (!DirectBoot.isUserUnlocked(context)) return
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, HomeClockWidget::class.java))
             if (ids.isEmpty()) {
@@ -139,14 +138,23 @@ class HomeClockWidget : AppWidgetProvider() {
         internal fun formatNextAlarm(next: ZonedDateTime, now: ZonedDateTime): String {
             val today = now.toLocalDate()
             val nextDate = next.toLocalDate()
-            val time = next.toLocalTime().format(timeFormatter)
+            val time = next.toLocalTime().format(timeFormatter())
             return when {
                 nextDate == today -> "Today $time"
                 nextDate == today.plusDays(1) -> "Tomorrow $time"
-                nextDate.isBefore(today.plusDays(7)) -> next.format(weekdayFormatter)
-                else -> next.format(dateFormatter)
+                nextDate.isBefore(today.plusDays(7)) -> next.format(weekdayFormatter())
+                else -> next.format(dateFormatter())
             }
         }
+
+        private fun timeFormatter(): DateTimeFormatter =
+            DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+
+        private fun weekdayFormatter(): DateTimeFormatter =
+            DateTimeFormatter.ofPattern("EEE HH:mm", Locale.getDefault())
+
+        private fun dateFormatter(): DateTimeFormatter =
+            DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.getDefault())
 
         private fun openAppIntent(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {

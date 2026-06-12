@@ -5,8 +5,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Persistence boundary for alarms. The domain/scheduling layers depend only on this interface;
- * the data layer provides a Room-backed implementation (see CLAUDE.md handoff — currently a
- * stub, [com.abhikjain360.abnormalarm.data.InMemoryAlarmRepository]).
+ * the data layer provides the Room-backed implementation.
  */
 interface AlarmRepository {
     fun observeAll(): Flow<List<Alarm>>

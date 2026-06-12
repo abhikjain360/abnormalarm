@@ -21,13 +21,16 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.unit.dp
 import com.abhikjain360.abnormalarm.domain.model.RepeatEnd
 import com.abhikjain360.abnormalarm.domain.model.RepeatRule
@@ -36,7 +39,6 @@ import java.time.LocalDate
 import java.time.Month
 import java.time.YearMonth
 import java.time.format.TextStyle
-import java.util.Locale
 
 private enum class Mode(val label: String) {
     ONCE("Once"),
@@ -72,7 +74,7 @@ fun RepeatPickerDialog(
     var mode by remember { mutableStateOf(modeOf(current)) }
 
     // Parameter state, seeded from the current rule where it matches.
-    var n by remember { mutableStateOf((current as? RepeatRule.EveryNDays)?.n
+    var n by remember { mutableIntStateOf((current as? RepeatRule.EveryNDays)?.n
         ?: (current as? RepeatRule.EveryNWeeksOnDays)?.n
         ?: (current as? RepeatRule.EveryNMonthsOnDate)?.n ?: 1) }
     val selectedDays = remember {
@@ -88,12 +90,17 @@ fun RepeatPickerDialog(
             (1..31).forEach { put(it, it in seed) }
         }
     }
-    var ordinal by remember { mutableStateOf((current as? RepeatRule.NthWeekdayOfMonth)?.ordinal ?: 1) }
+    var ordinal by remember { mutableIntStateOf((current as? RepeatRule.NthWeekdayOfMonth)?.ordinal ?: 1) }
     var nthDay by remember { mutableStateOf((current as? RepeatRule.NthWeekdayOfMonth)?.day ?: DayOfWeek.MONDAY) }
-    var dayOfMonth by remember { mutableStateOf((current as? RepeatRule.EveryNMonthsOnDate)?.dayOfMonth ?: 1) }
+    var dayOfMonth by remember { mutableIntStateOf((current as? RepeatRule.EveryNMonthsOnDate)?.dayOfMonth ?: 1) }
     var yMonth by remember { mutableStateOf((current as? RepeatRule.Yearly)?.month ?: Month.JANUARY) }
-    var yDay by remember { mutableStateOf((current as? RepeatRule.Yearly)?.day ?: 1) }
-    var daysBefore by remember { mutableStateOf((current as? RepeatRule.DaysBeforeEndOfMonth)?.daysBefore ?: 0) }
+    var yDay by remember { mutableIntStateOf((current as? RepeatRule.Yearly)?.day ?: 1) }
+    var daysBefore by remember { mutableIntStateOf((current as? RepeatRule.DaysBeforeEndOfMonth)?.daysBefore ?: 0) }
+    val locale = LocalLocale.current.platformLocale
+    val maxYearlyDay = yMonth.length(true)
+    LaunchedEffect(yMonth) {
+        if (yDay > maxYearlyDay) yDay = maxYearlyDay
+    }
 
     fun build(): RepeatRule = when (mode) {
         Mode.ONCE -> RepeatRule.Once
@@ -107,7 +114,7 @@ fun RepeatPickerDialog(
         Mode.DATES_OF_MONTH -> RepeatRule.DatesOfMonth(selectedDates.filterValues { it }.keys.ifEmpty { setOf(1) })
         Mode.NTH_WEEKDAY -> RepeatRule.NthWeekdayOfMonth(ordinal, nthDay)
         Mode.EVERY_N_MONTHS -> RepeatRule.EveryNMonthsOnDate(n.coerceAtLeast(1), dayOfMonth, YearMonth.now())
-        Mode.YEARLY -> RepeatRule.Yearly(yMonth, yDay)
+        Mode.YEARLY -> RepeatRule.Yearly(yMonth, yDay.coerceIn(1, maxYearlyDay))
         Mode.DAYS_BEFORE_EOM -> RepeatRule.DaysBeforeEndOfMonth(daysBefore)
     }
 
@@ -172,12 +179,12 @@ fun RepeatPickerDialog(
                         Month.entries.forEach { m ->
                             FilterChip(
                                 yMonth == m, { yMonth = m },
-                                { Text(m.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+                                { Text(m.getDisplayName(TextStyle.SHORT, locale)) },
                                 Modifier.padding(2.dp),
                             )
                         }
                     }
-                    Stepper("Day ", yDay, 1, 31) { yDay = it }
+                    Stepper("Day ", yDay, 1, maxYearlyDay) { yDay = it }
                 }
                 if (mode == Mode.DAYS_BEFORE_EOM) {
                     Stepper("Days before end (0 = last day) ", daysBefore, 0, 27) { daysBefore = it }
@@ -190,12 +197,13 @@ fun RepeatPickerDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DayChips(selected: MutableMap<DayOfWeek, Boolean>) {
+    val locale = LocalLocale.current.platformLocale
     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         DayOfWeek.entries.forEach { d ->
             FilterChip(
                 selected = selected[d] == true,
                 onClick = { selected[d] = !(selected[d] ?: false) },
-                label = { Text(d.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+                label = { Text(d.getDisplayName(TextStyle.SHORT, locale)) },
             )
         }
     }
@@ -204,12 +212,13 @@ private fun DayChips(selected: MutableMap<DayOfWeek, Boolean>) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DaySingleChips(selected: DayOfWeek, onSelect: (DayOfWeek) -> Unit) {
+    val locale = LocalLocale.current.platformLocale
     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         DayOfWeek.entries.forEach { d ->
             FilterChip(
                 selected = selected == d,
                 onClick = { onSelect(d) },
-                label = { Text(d.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+                label = { Text(d.getDisplayName(TextStyle.SHORT, locale)) },
             )
         }
     }
@@ -231,14 +240,39 @@ fun EndPickerDialog(
     onPick: (RepeatEnd) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var afterCount by remember { mutableStateOf((current as? RepeatEnd.AfterCount)?.count ?: 10) }
-    var selection by remember { mutableStateOf(if (current is RepeatEnd.AfterCount) 1 else 0) }
+    val today = remember { LocalDate.now() }
+    val initialEndDate = remember(current) { (current as? RepeatEnd.OnDate)?.date ?: today.plusMonths(1) }
+    var afterCount by remember { mutableIntStateOf((current as? RepeatEnd.AfterCount)?.count ?: 10) }
+    var endYear by remember { mutableIntStateOf(initialEndDate.year) }
+    var endMonth by remember { mutableIntStateOf(initialEndDate.monthValue) }
+    var endDay by remember { mutableIntStateOf(initialEndDate.dayOfMonth) }
+    var selection by remember {
+        mutableIntStateOf(
+            when (current) {
+                is RepeatEnd.AfterCount -> 1
+                is RepeatEnd.OnDate -> 2
+                RepeatEnd.Never -> 0
+            },
+        )
+    }
+    val minEndYear = minOf(today.year, initialEndDate.year)
+    val maxEndYear = maxOf(today.year + 50, initialEndDate.year)
+    val maxEndDay = YearMonth.of(endYear, endMonth).lengthOfMonth()
+    LaunchedEffect(maxEndDay) {
+        if (endDay > maxEndDay) endDay = maxEndDay
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = {
-                onPick(if (selection == 1) RepeatEnd.AfterCount(afterCount) else RepeatEnd.Never)
+                onPick(
+                    when (selection) {
+                        1 -> RepeatEnd.AfterCount(afterCount)
+                        2 -> RepeatEnd.OnDate(LocalDate.of(endYear, endMonth, endDay.coerceIn(1, maxEndDay)))
+                        else -> RepeatEnd.Never
+                    },
+                )
             }) { Text("OK") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -260,6 +294,18 @@ fun EndPickerDialog(
                     Text("After count")
                 }
                 if (selection == 1) Stepper("Count ", afterCount, 1, 999) { afterCount = it }
+                Row(
+                    modifier = Modifier.fillMaxWidth().selectable(selection == 2) { selection = 2 },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = selection == 2, onClick = { selection = 2 })
+                    Text("On date")
+                }
+                if (selection == 2) {
+                    Stepper("Year ", endYear, minEndYear, maxEndYear) { endYear = it }
+                    Stepper("Month ", endMonth, 1, 12) { endMonth = it }
+                    Stepper("Day ", endDay, 1, maxEndDay) { endDay = it }
+                }
             }
         },
     )

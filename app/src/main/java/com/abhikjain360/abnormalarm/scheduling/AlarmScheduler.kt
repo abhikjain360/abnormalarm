@@ -1,5 +1,6 @@
 package com.abhikjain360.abnormalarm.scheduling
 
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -37,6 +38,7 @@ class AlarmScheduler(
      * Schedule (or replace) the next exact fire for [alarm]. Returns the fire instant (epoch
      * millis), or null if the alarm is disabled / has no further occurrences (then it's cancelled).
      */
+    @SuppressLint("MissingPermission")
     fun schedule(alarm: Alarm): Long? {
         if (!alarm.enabled) {
             cancel(alarm.id)
@@ -50,8 +52,9 @@ class AlarmScheduler(
         val triggerMillis = trigger.toInstant().toEpochMilli()
         val info = AlarmManager.AlarmClockInfo(triggerMillis, showIntent())
         alarmManager.setAlarmClock(info, firePendingIntent(alarm, triggerMillis))
+        ScheduleMirror.upsertAlarm(context, alarm)
         scheduleUpcoming(alarm, triggerMillis)
-        HomeClockWidget.updateAll(context)
+        if (DirectBoot.isUserUnlocked(context)) HomeClockWidget.updateAll(context)
         return triggerMillis
     }
 
@@ -60,6 +63,7 @@ class AlarmScheduler(
      * and the [AlarmIntents.ACTION_SNOOZE_FIRE] action so it rings again WITHOUT touching the repeat
      * series (which was already advanced when the alarm first fired).
      */
+    @SuppressLint("MissingPermission")
     fun scheduleSnooze(alarmId: Long, fireMillis: Long) {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmIntents.ACTION_SNOOZE_FIRE
@@ -82,8 +86,13 @@ class AlarmScheduler(
             alarmManager.cancel(it)
             it.cancel()
         }
+        snoozePendingIntentOrNull(alarmId)?.let {
+            alarmManager.cancel(it)
+            it.cancel()
+        }
+        ScheduleMirror.removeAlarm(context, alarmId)
         Notifications.cancelUpcoming(context, alarmId)
-        HomeClockWidget.updateAll(context)
+        if (DirectBoot.isUserUnlocked(context)) HomeClockWidget.updateAll(context)
     }
 
     /** Set a lightweight, non-wakeup trigger to post the Upcoming notification (DESIGN.md §7). */
@@ -161,6 +170,18 @@ class AlarmScheduler(
         }
         return PendingIntent.getBroadcast(
             context, upcomingRequestCode(alarmId), intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun snoozePendingIntentOrNull(alarmId: Long): PendingIntent? {
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmIntents.ACTION_SNOOZE_FIRE
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            snoozeRequestCode(alarmId),
+            intent,
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
         )
     }

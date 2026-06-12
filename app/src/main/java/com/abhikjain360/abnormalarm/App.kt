@@ -2,6 +2,7 @@ package com.abhikjain360.abnormalarm
 
 import android.app.Application
 import android.content.Context
+import com.abhikjain360.abnormalarm.scheduling.DirectBoot
 import com.abhikjain360.abnormalarm.data.RoomAlarmRepository
 import com.abhikjain360.abnormalarm.data.RoomTimerRepository
 import com.abhikjain360.abnormalarm.data.calendar.CalendarObserver
@@ -61,25 +62,46 @@ class DefaultAppContainer(context: Context) : AppContainer {
 }
 
 class AbnormalarmApp : Application() {
-    lateinit var container: AppContainer
-        private set
+    @Volatile private var _container: AppContainer? = null
+    val container: AppContainer
+        get() = _container ?: initializeUnlockedContainer()
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
-        container = DefaultAppContainer(this)
         Notifications.createChannels(this)
+        if (!DirectBoot.isUserUnlocked(this)) return
+        initializeUnlockedContainer()
+    }
+
+    @Synchronized
+    private fun initializeUnlockedContainer(): AppContainer {
+        _container?.let { return it }
+        check(DirectBoot.isUserUnlocked(this)) {
+            "Credential-protected app container is unavailable before user unlock"
+        }
+        val created = DefaultAppContainer(this)
+        _container = created
         // Calendar feed (no-ops cheaply until the feature is enabled / permission granted).
-        container.calendarObserver.register()
+        created.calendarObserver.register()
         CalendarSyncWorker.schedulePeriodic(this)
-        // Keep the scheduler's upcoming-notification lead in sync with the user's setting.
+        // Reconcile persisted state with the OS registry on process start. This is cheap and covers
+        // cases where Android cleared registered alarms/timers before the user reopened the app.
         appScope.launch {
-            container.settingsRepository.settings.collect {
-                container.alarmScheduler.upcomingLeadMinutes = it.upcomingLeadMinutes
+            created.alarmScheduler.upcomingLeadMinutes =
+                created.settingsRepository.current().upcomingLeadMinutes
+            created.alarmScheduler.rescheduleAll(created.alarmRepository)
+            created.timerScheduler.rescheduleAll(created.timerRepository)
+        }
+        // Keep the scheduler's upcoming-notification lead in sync with later settings changes.
+        appScope.launch {
+            created.settingsRepository.settings.collect {
+                created.alarmScheduler.upcomingLeadMinutes = it.upcomingLeadMinutes
             }
         }
         HomeClockWidget.updateAll(this)
+        return created
     }
 }
 

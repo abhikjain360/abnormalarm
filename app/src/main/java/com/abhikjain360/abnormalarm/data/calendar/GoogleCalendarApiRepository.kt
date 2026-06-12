@@ -2,7 +2,7 @@ package com.abhikjain360.abnormalarm.data.calendar
 
 import android.accounts.Account
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
@@ -160,7 +160,7 @@ class GoogleCalendarApiRepository(
 
             json.optJSONArray("items").orEmpty().forEachObject { event ->
                 if (event.optString("status") == "cancelled") return@forEachObject
-                if (!selfAttendeeStatusQualifies(event.optJSONArray("attendees"))) return@forEachObject
+                if (!eventQualifies(event)) return@forEachObject
 
                 val start = event.optJSONObject("start") ?: return@forEachObject
                 val startMillis = startMillis(start) ?: return@forEachObject // all-day events have date, not dateTime
@@ -207,7 +207,7 @@ class GoogleCalendarApiRepository(
     }
 
     private fun buildUrl(base: String, params: Map<String, String?>): String {
-        val builder = Uri.parse(base).buildUpon()
+        val builder = base.toUri().buildUpon()
         for ((key, value) in params) {
             if (!value.isNullOrBlank()) builder.appendQueryParameter(key, value)
         }
@@ -242,17 +242,24 @@ class GoogleCalendarApiRepository(
             .getOrNull()
     }
 
+    private fun eventQualifies(event: JSONObject): Boolean {
+        event.optJSONObject("organizer")?.let { organizer ->
+            if (organizer.optBoolean("self", false)) return true
+        }
+        return selfAttendeeStatusQualifies(event.optJSONArray("attendees"))
+    }
+
     private fun selfAttendeeStatusQualifies(attendees: JSONArray?): Boolean {
         if (attendees == null) return true
         attendees.forEachObject { attendee ->
             if (attendee.optBoolean("self", false)) {
                 return when (attendee.optString("responseStatus")) {
-                    "accepted", "needsAction", "" -> true
+                    "accepted" -> true
                     else -> false
                 }
             }
         }
-        return true
+        return attendees.length() == 0
     }
 
     private fun parseColor(color: String): Int {

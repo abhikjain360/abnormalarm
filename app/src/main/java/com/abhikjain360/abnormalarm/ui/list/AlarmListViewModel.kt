@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.abhikjain360.abnormalarm.domain.AlarmRepository
 import com.abhikjain360.abnormalarm.domain.model.Alarm
 import com.abhikjain360.abnormalarm.domain.model.AlarmSource
+import com.abhikjain360.abnormalarm.domain.model.RepeatRule
 import com.abhikjain360.abnormalarm.scheduling.AlarmScheduler
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,9 +44,14 @@ class AlarmListViewModel(
     fun skipNext(id: Long) = viewModelScope.launch {
         val alarm = repository.get(id) ?: return@launch
         val next = scheduler.computeTrigger(alarm) ?: return@launch
-        val updated = alarm.copy(skipNextInstantMillis = next.toInstant().toEpochMilli())
+        val oneShot = alarm.repeat == RepeatRule.Once || alarm.repeat is RepeatRule.OnceOnDate
+        val updated = if (oneShot) {
+            alarm.copy(enabled = false, skipNextInstantMillis = null)
+        } else {
+            alarm.copy(skipNextInstantMillis = next.toInstant().toEpochMilli())
+        }
         repository.upsert(updated)
-        scheduler.schedule(updated)
+        if (oneShot) scheduler.cancel(id) else scheduler.schedule(updated)
     }
 
     companion object {

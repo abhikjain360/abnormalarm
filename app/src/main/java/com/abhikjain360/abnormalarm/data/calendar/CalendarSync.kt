@@ -59,8 +59,9 @@ class CalendarSync(
             reconciledProviders += CalendarProviders.DEVICE
         }
 
-        if (settings.googleCalendarApiEnabled && settings.connectedGoogleAccounts.isNotEmpty()) {
-            for (accountEmail in settings.connectedGoogleAccounts) {
+        val connectedGoogleAccounts = settings.connectedGoogleAccounts
+        if (settings.googleCalendarApiEnabled && connectedGoogleAccounts.isNotEmpty()) {
+            for (accountEmail in connectedGoogleAccounts) {
                 val accessToken = GoogleCalendarApiAuth.accessTokenOrNull(context, accountEmail)
                 if (accessToken != null) {
                     candidates += googleCalendarApiRepository.queryCandidates(
@@ -73,11 +74,11 @@ class CalendarSync(
                     reconciledProviders += googleProviderKey(accountEmail)
                 }
             }
-        } else {
-            reconciledProviders += CalendarProviders.GOOGLE
         }
 
-        val existingByKey = existing.associateBy { keyOf(it) }
+        val existingByKey = buildMap {
+            existing.forEach { alarm -> putIfAbsent(keyOf(alarm), alarm) }
+        }
         val desiredKeys = HashSet<String>()
 
         for (cand in candidates) {
@@ -86,9 +87,24 @@ class CalendarSync(
             val fireTime = fireZdt.toLocalTime().withSecond(0).withNano(0)
             val fireMillis = fireDate.atTime(fireTime).atZone(zone).toInstant().toEpochMilli()
             val key = keyOf(cand.provider, cand.calendarId, cand.eventKey, cand.instanceStartMillis, fireMillis)
-            desiredKeys += key
+            if (!desiredKeys.add(key)) continue
 
-            if (existingByKey.containsKey(key)) continue // already present (preserve its state)
+            val existingAlarm = existingByKey[key]
+            if (existingAlarm != null) {
+                val refreshed = existingAlarm.copy(
+                    label = cand.title,
+                    time = fireTime,
+                    repeat = RepeatRule.OnceOnDate(fireDate),
+                    calendarProvider = cand.provider,
+                    calendarId = cand.calendarId,
+                    calendarEventKey = cand.eventKey,
+                    calendarEventId = cand.eventKey.toLongOrNull(),
+                    calendarInstanceStartMillis = cand.instanceStartMillis,
+                )
+                if (refreshed != existingAlarm) alarmRepository.upsert(refreshed)
+                if (refreshed.enabled) alarmScheduler.schedule(refreshed)
+                continue
+            }
 
             val alarm = Alarm(
                 label = cand.title,
@@ -109,13 +125,18 @@ class CalendarSync(
         // Drop calendar alarms that no longer correspond to any in-window instance.
         for (stale in existing) {
             val provider = stale.calendarProvider ?: CalendarProviders.DEVICE
-            val providerKey = if (provider == CalendarProviders.GOOGLE) {
-                googleProviderKey(stale.calendarId?.substringBefore("|").orEmpty())
+            val shouldReconcile = if (provider == CalendarProviders.GOOGLE) {
+                val account = stale.calendarId?.substringBefore("|").orEmpty()
+                !settings.googleCalendarApiEnabled ||
+                    account !in connectedGoogleAccounts ||
+                    googleProviderKey(account) in reconciledProviders
             } else {
-                provider
+                provider in reconciledProviders
             }
-            if (provider !in reconciledProviders && providerKey !in reconciledProviders) continue
-            if (keyOf(stale) !in desiredKeys) {
+            if (!shouldReconcile) continue
+            val staleKey = keyOf(stale)
+            val duplicate = existingByKey[staleKey]?.id != stale.id
+            if (duplicate || staleKey !in desiredKeys) {
                 alarmScheduler.cancel(stale.id)
                 alarmRepository.delete(stale.id)
             }

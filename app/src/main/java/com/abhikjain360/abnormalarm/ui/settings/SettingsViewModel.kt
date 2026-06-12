@@ -139,6 +139,9 @@ class SettingsViewModel(
 
     fun setLeadMinutes(minutes: Int) = viewModelScope.launch {
         settingsRepository.setUpcomingLeadMinutes(minutes)
+        val container = appContext.appContainer
+        container.alarmScheduler.upcomingLeadMinutes = minutes
+        container.alarmScheduler.rescheduleAll(container.alarmRepository)
     }
 
     companion object {

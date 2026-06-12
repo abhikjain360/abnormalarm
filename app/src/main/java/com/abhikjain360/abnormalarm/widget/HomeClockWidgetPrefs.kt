@@ -1,6 +1,7 @@
 package com.abhikjain360.abnormalarm.widget
 
 import android.content.Context
+import androidx.core.content.edit
 import java.time.ZoneId
 
 data class HomeClockWidgetConfig(
@@ -28,21 +29,21 @@ object HomeClockWidgetPrefs {
     }
 
     fun save(context: Context, appWidgetId: Int, config: HomeClockWidgetConfig) {
-        context.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit()
-            .putNullableString(key(appWidgetId, KEY_ZONE_ONE_ID), config.zoneOneId)
-            .putString(key(appWidgetId, KEY_ZONE_ONE_LABEL), config.zoneOneLabel)
-            .putNullableString(key(appWidgetId, KEY_ZONE_TWO_ID), config.zoneTwoId)
-            .putString(key(appWidgetId, KEY_ZONE_TWO_LABEL), config.zoneTwoLabel)
-            .apply()
+        context.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit {
+            putNullableString(key(appWidgetId, KEY_ZONE_ONE_ID), config.zoneOneId)
+            putString(key(appWidgetId, KEY_ZONE_ONE_LABEL), config.zoneOneLabel)
+            putNullableString(key(appWidgetId, KEY_ZONE_TWO_ID), config.zoneTwoId)
+            putString(key(appWidgetId, KEY_ZONE_TWO_LABEL), config.zoneTwoLabel)
+        }
     }
 
     fun delete(context: Context, appWidgetId: Int) {
-        context.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit()
-            .remove(key(appWidgetId, KEY_ZONE_ONE_ID))
-            .remove(key(appWidgetId, KEY_ZONE_ONE_LABEL))
-            .remove(key(appWidgetId, KEY_ZONE_TWO_ID))
-            .remove(key(appWidgetId, KEY_ZONE_TWO_LABEL))
-            .apply()
+        context.getSharedPreferences(NAME, Context.MODE_PRIVATE).edit {
+            remove(key(appWidgetId, KEY_ZONE_ONE_ID))
+            remove(key(appWidgetId, KEY_ZONE_ONE_LABEL))
+            remove(key(appWidgetId, KEY_ZONE_TWO_ID))
+            remove(key(appWidgetId, KEY_ZONE_TWO_LABEL))
+        }
     }
 
     private fun key(appWidgetId: Int, name: String): String = "$appWidgetId.$name"

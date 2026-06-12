@@ -10,12 +10,16 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.abhikjain360.abnormalarm.R
 import com.abhikjain360.abnormalarm.appContainer
+import com.abhikjain360.abnormalarm.domain.model.Alarm
 import com.abhikjain360.abnormalarm.domain.model.RingSettings
 import com.abhikjain360.abnormalarm.domain.model.Timer
 import com.abhikjain360.abnormalarm.domain.model.TimerState
 import com.abhikjain360.abnormalarm.domain.timer.TimerDurationInput
 import com.abhikjain360.abnormalarm.notifications.Notifications
 import com.abhikjain360.abnormalarm.scheduling.AlarmIntents
+import com.abhikjain360.abnormalarm.scheduling.AlarmScheduler
+import com.abhikjain360.abnormalarm.scheduling.DirectBoot
+import com.abhikjain360.abnormalarm.scheduling.ScheduleMirror
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -108,16 +112,12 @@ class RingService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
         )
         scope.launch {
-            val settings = withContext(Dispatchers.Default) {
-                applicationContext.appContainer.alarmRepository.get(id)?.ring
-            } ?: RingSettings()
+            val alarm = loadAlarm(id)
+            val settings = alarm?.ring ?: RingSettings()
             startRinger(settings)
             // Auto-silence: stop ringing after the configured window and flag the alarm missed.
             scheduleAutoSilence(active, settings) {
-                val label = withContext(Dispatchers.Default) {
-                    applicationContext.appContainer.alarmRepository.get(id)?.label
-                }.orEmpty()
-                Notifications.postMissed(applicationContext, id, label)
+                Notifications.postMissed(applicationContext, id, alarm?.label.orEmpty())
                 finishCurrentAndContinue()
             }
         }
@@ -132,9 +132,7 @@ class RingService : Service() {
     }
 
     private suspend fun showTimer(id: Long, restartRinger: Boolean) {
-        val timer = withContext(Dispatchers.Default) {
-            applicationContext.appContainer.timerRepository.get(id)
-        } ?: return
+        val timer = loadTimer(id) ?: return
         active = ActiveRing(AlarmIntents.RING_KIND_TIMER, id)
         startForeground(
             NOTIF_ID,
@@ -143,9 +141,7 @@ class RingService : Service() {
         )
         if (restartRinger) startRinger(timer.ring)
         scheduleAutoSilence(active, timer.ring) {
-            withContext(Dispatchers.Default) {
-                applicationContext.appContainer.timerRepository.upsert(timer.toIdle())
-            }
+            saveTimer(timer.toIdle())
             Notifications.postTimerFinished(applicationContext, id, timer.displayLabel())
             finishCurrentAndContinue()
         }
@@ -156,11 +152,14 @@ class RingService : Service() {
         val id = active?.takeIf { it.kind == AlarmIntents.RING_KIND_ALARM }?.id ?: -1L
         scope.launch {
             if (id >= 0L) {
-                val minutes = withContext(Dispatchers.Default) {
-                    applicationContext.appContainer.alarmRepository.get(id)?.ring?.snoozeMinutes
-                } ?: RingSettings().snoozeMinutes
+                val minutes = loadAlarm(id)?.ring?.snoozeMinutes ?: RingSettings().snoozeMinutes
                 val fireAt = System.currentTimeMillis() + minutes * 60_000L
-                applicationContext.appContainer.alarmScheduler.scheduleSnooze(id, fireAt)
+                val scheduler = if (DirectBoot.isUserUnlocked(applicationContext)) {
+                    applicationContext.appContainer.alarmScheduler
+                } else {
+                    AlarmScheduler(applicationContext)
+                }
+                scheduler.scheduleSnooze(id, fireAt)
             }
             finishCurrentAndContinue()
         }
@@ -175,14 +174,7 @@ class RingService : Service() {
             val shouldFinishCurrent = active == null ||
                 active == ActiveRing(AlarmIntents.RING_KIND_TIMER, id)
             if (id >= 0L) {
-                val timer = withContext(Dispatchers.Default) {
-                    applicationContext.appContainer.timerRepository.get(id)
-                }
-                if (timer != null) {
-                    withContext(Dispatchers.Default) {
-                        applicationContext.appContainer.timerRepository.upsert(timer.toIdle())
-                    }
-                }
+                loadTimer(id)?.let { saveTimer(it.toIdle()) }
             }
             if (shouldFinishCurrent) finishCurrentAndContinue()
         }
@@ -207,10 +199,8 @@ class RingService : Service() {
         val old = active
         active = null
         scope.launch {
-            val nextTimer = withContext(Dispatchers.Default) {
-                applicationContext.appContainer.timerRepository.getRinging()
-                    .firstOrNull { old?.kind != AlarmIntents.RING_KIND_TIMER || it.id != old.id }
-            }
+            val nextTimer = ringingTimers()
+                .firstOrNull { old?.kind != AlarmIntents.RING_KIND_TIMER || it.id != old.id }
             if (nextTimer != null) {
                 showTimer(nextTimer.id, restartRinger = true)
             } else {
@@ -307,6 +297,43 @@ class RingService : Service() {
 
     private fun Timer.displayLabel(): String =
         label.ifBlank { TimerDurationInput.formatSeconds(durationMillis / 1000L) }
+
+    private suspend fun loadAlarm(id: Long): Alarm? = withContext(Dispatchers.Default) {
+        if (DirectBoot.isUserUnlocked(applicationContext)) {
+            applicationContext.appContainer.alarmRepository.get(id)
+        } else {
+            ScheduleMirror.getAlarm(applicationContext, id)
+        }
+    }
+
+    private suspend fun loadTimer(id: Long): Timer? = withContext(Dispatchers.Default) {
+        if (DirectBoot.isUserUnlocked(applicationContext)) {
+            applicationContext.appContainer.timerRepository.get(id)
+        } else {
+            ScheduleMirror.getTimer(applicationContext, id)
+        }
+    }
+
+    private suspend fun saveTimer(timer: Timer) = withContext(Dispatchers.Default) {
+        if (DirectBoot.isUserUnlocked(applicationContext)) {
+            applicationContext.appContainer.timerRepository.upsert(timer)
+            if (timer.state == TimerState.RUNNING || timer.state == TimerState.RINGING) {
+                ScheduleMirror.upsertTimer(applicationContext, timer)
+            } else {
+                ScheduleMirror.removeTimer(applicationContext, timer.id)
+            }
+        } else {
+            ScheduleMirror.upsertTimer(applicationContext, timer)
+        }
+    }
+
+    private suspend fun ringingTimers(): List<Timer> = withContext(Dispatchers.Default) {
+        if (DirectBoot.isUserUnlocked(applicationContext)) {
+            applicationContext.appContainer.timerRepository.getRinging()
+        } else {
+            ScheduleMirror.getRingingTimers(applicationContext)
+        }
+    }
 
     private fun timerNotificationRequestCode(timerId: Long) =
         (timerId.toInt() and 0x00FFFFFF) or 0x50000000

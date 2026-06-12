@@ -18,8 +18,13 @@ class TimerReceiver : BroadcastReceiver() {
         val triggerMillis = intent.getLongExtra(AlarmIntents.EXTRA_TRIGGER_MILLIS, -1L)
         if (timerId < 0L) return
 
-        val pending = goAsync()
         val appContext = context.applicationContext
+        if (!DirectBoot.isUserUnlocked(appContext)) {
+            onReceiveDirectBoot(appContext, timerId, triggerMillis)
+            return
+        }
+
+        val pending = goAsync()
         val container = appContext.appContainer
         CoroutineScope(Dispatchers.Default).launch {
             try {
@@ -32,14 +37,40 @@ class TimerReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
-                container.timerRepository.upsert(
+                val ringing = timer.copy(
+                    state = TimerState.RINGING,
+                    endAtMillis = null,
+                    remainingMillis = null,
+                )
+                container.timerRepository.upsert(ringing)
+                ScheduleMirror.upsertTimer(appContext, ringing)
+                RingService.startTimer(appContext, timerId)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    private fun onReceiveDirectBoot(context: Context, timerId: Long, triggerMillis: Long) {
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                val timer = ScheduleMirror.getTimer(context, timerId) ?: return@launch
+                if (timer.state != TimerState.RUNNING) return@launch
+                val expectedEnd = timer.endAtMillis ?: return@launch
+                if (triggerMillis != expectedEnd) {
+                    TimerScheduler(context).schedule(timer)
+                    return@launch
+                }
+                ScheduleMirror.upsertTimer(
+                    context,
                     timer.copy(
                         state = TimerState.RINGING,
                         endAtMillis = null,
                         remainingMillis = null,
                     ),
                 )
-                RingService.startTimer(appContext, timerId)
+                RingService.startTimer(context, timerId)
             } finally {
                 pending.finish()
             }

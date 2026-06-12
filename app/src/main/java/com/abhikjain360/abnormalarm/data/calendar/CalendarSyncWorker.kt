@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.abhikjain360.abnormalarm.appContainer
+import com.abhikjain360.abnormalarm.scheduling.DirectBoot
 import java.time.Duration
 
 /**
@@ -21,6 +22,7 @@ class CalendarSyncWorker(context: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result {
         return try {
+            if (!DirectBoot.isUserUnlocked(applicationContext)) return Result.success()
             applicationContext.appContainer.calendarSync.sync(System.currentTimeMillis())
             Result.success()
         } catch (_: SecurityException) {

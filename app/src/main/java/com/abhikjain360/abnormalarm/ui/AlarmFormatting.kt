@@ -10,9 +10,9 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 // 24-hour display throughout (no AM/PM), matching the 24-hour clock-dial picker.
-private val TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+private fun timeFormatter(): DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
 
-fun LocalTime.formatTime(): String = format(TIME_FMT)
+fun LocalTime.formatTime(): String = format(timeFormatter())
 
 /** Short human summary of a repeat rule, e.g. "Mon, Wed, Fri" or "Every 2 days". */
 fun repeatSummary(rule: RepeatRule): String = when (rule) {

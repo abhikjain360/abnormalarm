@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.abhikjain360.abnormalarm.domain.timer.TimerDurationInput
 import com.abhikjain360.abnormalarm.scheduling.AlarmIntents
+import com.abhikjain360.abnormalarm.scheduling.DirectBoot
+import com.abhikjain360.abnormalarm.scheduling.ScheduleMirror
 import com.abhikjain360.abnormalarm.ui.theme.AbnormalarmTheme
 
 /**
@@ -92,13 +94,23 @@ private fun RingScreen(kind: String, id: Long, onDismiss: () -> Unit, onSnooze: 
     LaunchedEffect(kind, id) {
         if (id >= 0L) {
             if (kind == AlarmIntents.RING_KIND_TIMER) {
-                context.appContainer.timerRepository.get(id)?.let { timer ->
+                val timer = if (DirectBoot.isUserUnlocked(context)) {
+                    context.appContainer.timerRepository.get(id)
+                } else {
+                    ScheduleMirror.getTimer(context, id)
+                }
+                timer?.let {
                     label = timer.label.ifBlank { "Timer" }
                     primaryText = TimerDurationInput.formatSeconds(timer.durationMillis / 1000L)
                     snoozeEnabled = false
                 }
             } else {
-                context.appContainer.alarmRepository.get(id)?.let { alarm ->
+                val alarm = if (DirectBoot.isUserUnlocked(context)) {
+                    context.appContainer.alarmRepository.get(id)
+                } else {
+                    ScheduleMirror.getAlarm(context, id)
+                }
+                alarm?.let {
                     label = alarm.label.ifBlank { "Alarm" }
                     primaryText = alarm.time.formatTime()
                     snoozeEnabled = alarm.ring.snoozeEnabled

@@ -1,12 +1,7 @@
 # Single source of truth for dependency versions (see DESIGN.md §11).
-# Pinned to a documented-clean mid-2026 combo: AGP 9.1.0 + Gradle 9.1 + Kotlin 2.2.10.
-#
-# NOTE TO THE NEXT SESSION: entries below for room/ksp/work/datastore/navigation are
-# listed for convenience but are NOT yet wired into app/build.gradle.kts. Wire them as
-# you build those layers. If a version fails to resolve, bump it — these are pinned to
-# plausible mid-2026 versions and the build is the source of truth.
+# Pinned to the AGP 9.2 / Gradle 9.4 / Kotlin 2.3 toolchain used by this repo.
 [versions]
-agp = "9.2.0"            # latest stable (Apr 2026); requires Gradle 9.4.1, JDK 17, build-tools 36.0.0
+agp = "9.2.0"            # requires Gradle 9.4.1, JDK 17, build-tools 36.0.0
 kotlin = "2.3.10"        # = AGP 9.2's built-in KGP; the Compose compiler plugin MUST match this
 coreKtx = "1.17.0"
 lifecycle = "2.9.4"
