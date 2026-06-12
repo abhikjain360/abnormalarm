@@ -1,0 +1,15 @@
+<resources>
+    <!--
+      Window-level theme (dark, no action bar). Compose draws all real UI with the Mocha
+      MaterialTheme; this just sets the window background + system bars so there's no white flash
+      before Compose composes. Parented on the framework Material (dark) theme to avoid pulling in
+      the Material Components XML library.
+    -->
+    <style name="Theme.Abnormalarm" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/mocha_base</item>
+        <item name="android:statusBarColor">@color/mocha_base</item>
+        <item name="android:navigationBarColor">@color/mocha_base</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

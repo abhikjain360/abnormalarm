@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Abnormalarm</string>
+    <string name="widget_name">Abnormalarm Clock</string>
+    <string name="widget_description">Large clock with date, next alarm, and optional time zones</string>
+    <string name="widget_next_alarm_label">Next alarm</string>
+</resources>

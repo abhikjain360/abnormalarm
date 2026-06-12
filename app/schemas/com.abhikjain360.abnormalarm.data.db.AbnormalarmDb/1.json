@@ -1,0 +1,141 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "0f76aaa685853c0f2b0a984ee13da0e0",
+    "entities": [
+      {
+        "tableName": "alarms",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `label` TEXT NOT NULL, `time` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `repeat` TEXT NOT NULL, `end` TEXT NOT NULL, `source` TEXT NOT NULL, `skipNextInstantMillis` INTEGER, `firedCount` INTEGER NOT NULL, `calendarEventId` INTEGER, `calendarInstanceStartMillis` INTEGER, `ring_soundUri` TEXT, `ring_volumeRampSeconds` INTEGER NOT NULL, `ring_vibrate` INTEGER NOT NULL, `ring_flashlight` INTEGER NOT NULL, `ring_snoozeEnabled` INTEGER NOT NULL, `ring_snoozeMinutes` INTEGER NOT NULL, `ring_autoSilenceMinutes` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "time",
+            "columnName": "time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repeat",
+            "columnName": "repeat",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "end",
+            "columnName": "end",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skipNextInstantMillis",
+            "columnName": "skipNextInstantMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "firedCount",
+            "columnName": "firedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "calendarEventId",
+            "columnName": "calendarEventId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "calendarInstanceStartMillis",
+            "columnName": "calendarInstanceStartMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "ring.soundUri",
+            "columnName": "ring_soundUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ring.volumeRampSeconds",
+            "columnName": "ring_volumeRampSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ring.vibrate",
+            "columnName": "ring_vibrate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ring.flashlight",
+            "columnName": "ring_flashlight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ring.snoozeEnabled",
+            "columnName": "ring_snoozeEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ring.snoozeMinutes",
+            "columnName": "ring_snoozeMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ring.autoSilenceMinutes",
+            "columnName": "ring_autoSilenceMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_alarms_calendarEventId_calendarInstanceStartMillis",
+            "unique": false,
+            "columnNames": [
+              "calendarEventId",
+              "calendarInstanceStartMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alarms_calendarEventId_calendarInstanceStartMillis` ON `${TABLE_NAME}` (`calendarEventId`, `calendarInstanceStartMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0f76aaa685853c0f2b0a984ee13da0e0')"
+    ]
+  }
+}

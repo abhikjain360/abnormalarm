@@ -1,0 +1,5 @@
+<resources>
+    <!-- Catppuccin Mocha base — used for the window background + adaptive-icon background. -->
+    <color name="mocha_base">#FF1E1E2E</color>
+    <color name="ic_launcher_background">#FF1E1E2E</color>
+</resources>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Exact alarms for an alarm-clock app: a NORMAL permission, granted at install with no
+         runtime prompt (DESIGN.md §2). We deliberately do NOT use SCHEDULE_EXACT_ALARM. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Re-register alarms after reboot (and the receiver also handles app-update/time changes). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Notifications (ringing / upcoming / missed). Runtime-granted on first launch. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Full-screen alarm screen over the lock screen. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Foreground service while ringing (audio playback type). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Calendar feed (DESIGN.md §5). Runtime-granted only when the user enables the feature. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Google Calendar API fallback for devices whose Google Calendar data is not exposed through
+         CalendarContract. OAuth consent is still required before any calendar data is read. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".AbnormalarmApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Abnormalarm">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Abnormalarm">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".widget.HomeClockWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Abnormalarm" />
+
+        <!-- Full-screen ring screen: shows over the lock screen, wakes the display, stays out of
+             recents, and is single-instance so re-fires reuse it. -->
+        <activity
+            android:name=".ring.RingActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Abnormalarm" />
+
+        <service
+            android:name=".ring.RingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Fired by setAlarmClock; targeted by explicit intent so it needs no intent-filter. -->
+        <receiver
+            android:name=".scheduling.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- Fired by exact one-shot timer expiries. -->
+        <receiver
+            android:name=".scheduling.TimerReceiver"
+            android:exported="false" />
+
+        <!-- Upcoming-notification lead trigger + its Skip action (DESIGN.md §7). Explicit intents. -->
+        <receiver
+            android:name=".scheduling.UpcomingReceiver"
+            android:exported="false" />
+
+        <!-- Re-materializes alarms after events that clear the OS alarm registry (DESIGN.md §12). -->
+        <receiver
+            android:name=".scheduling.RescheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".widget.HomeClockWidget"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/home_clock_widget_info" />
+        </receiver>
+
+    </application>
+
+</manifest>
