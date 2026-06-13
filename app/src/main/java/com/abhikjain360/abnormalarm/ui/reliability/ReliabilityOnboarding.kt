@@ -44,7 +44,8 @@ fun ReliabilityOnboarding() {
     LaunchedEffect(Unit) {
         val settings = container.settingsRepository.current()
         if (settings.reliabilityPromptShown) return@LaunchedEffect
-        val actionable = !Reliability.isIgnoringBatteryOptimizations(context) || Reliability.hasOemAutostart()
+        val actionable = !Reliability.isIgnoringBatteryOptimizations(context) ||
+            Reliability.hasOemAutostartManager()
         // Mark shown regardless — we only ever consider it once (the §12 guarantee).
         container.settingsRepository.setReliabilityPromptShown(true)
         if (actionable) show = true
@@ -74,16 +75,16 @@ fun ReliabilityOnboarding() {
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Run without battery limits") }
             }
-            if (Reliability.hasOemAutostart()) {
+            if (Reliability.hasOemAutostartManager()) {
                 OutlinedButton(
                     onClick = { Reliability.openAutostartSettings(context) },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Allow autostart") }
+                ) { Text("Open autostart settings") }
             }
 
             Text(
-                "Autostart can't be enabled by the app itself, and a system update may reset " +
-                    "these. You can re-check anytime under Settings → Background reliability.",
+                "Autostart can't be enabled or checked by the app itself. If you already enabled " +
+                    "it in system settings, mark it done under Settings → Background reliability.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

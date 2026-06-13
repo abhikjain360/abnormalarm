@@ -144,6 +144,10 @@ class SettingsViewModel(
         container.alarmScheduler.rescheduleAll(container.alarmRepository)
     }
 
+    fun setAutostartSetupConfirmed(confirmed: Boolean) = viewModelScope.launch {
+        settingsRepository.setAutostartSetupConfirmed(confirmed)
+    }
+
     companion object {
         fun factory(
             appContext: Context,

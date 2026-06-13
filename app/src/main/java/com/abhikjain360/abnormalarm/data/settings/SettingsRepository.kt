@@ -29,6 +29,8 @@ data class AppSettings(
     val upcomingLeadMinutes: Int = 60,
     /** Set once after the first-run reliability sheet is shown — never auto-shown again (§12). */
     val reliabilityPromptShown: Boolean = false,
+    /** Manual confirmation only: OEM autostart state is not queryable through public Android APIs. */
+    val autostartSetupConfirmed: Boolean = false,
 )
 
 /**
@@ -46,6 +48,7 @@ class SettingsRepository(private val context: Context) {
             disabledGoogleCalendarIds = p[KEY_GOOGLE_CAL_DISABLED] ?: emptySet(),
             upcomingLeadMinutes = p[KEY_LEAD_MINUTES] ?: 60,
             reliabilityPromptShown = p[KEY_RELIABILITY_SHOWN] ?: false,
+            autostartSetupConfirmed = p[KEY_AUTOSTART_CONFIRMED] ?: false,
         )
     }
 
@@ -104,6 +107,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setReliabilityPromptShown(shown: Boolean) =
         context.dataStore.edit { it[KEY_RELIABILITY_SHOWN] = shown }.let {}
 
+    suspend fun setAutostartSetupConfirmed(confirmed: Boolean) =
+        context.dataStore.edit { it[KEY_AUTOSTART_CONFIRMED] = confirmed }.let {}
+
     private companion object {
         val KEY_CAL_ENABLED = booleanPreferencesKey("calendar_feed_enabled")
         val KEY_CAL_DISABLED = stringSetPreferencesKey("calendar_disabled_ids")
@@ -112,5 +118,6 @@ class SettingsRepository(private val context: Context) {
         val KEY_GOOGLE_CAL_DISABLED = stringSetPreferencesKey("google_calendar_disabled_ids")
         val KEY_LEAD_MINUTES = intPreferencesKey("upcoming_lead_minutes")
         val KEY_RELIABILITY_SHOWN = booleanPreferencesKey("reliability_prompt_shown")
+        val KEY_AUTOSTART_CONFIRMED = booleanPreferencesKey("autostart_setup_confirmed")
     }
 }

@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abhikjain360.abnormalarm.appContainer
 import com.abhikjain360.abnormalarm.data.calendar.GoogleCalendarApiAuth
 import com.abhikjain360.abnormalarm.data.calendar.GoogleCalendarApiRepository
+import com.abhikjain360.abnormalarm.data.settings.AppSettings
 import com.abhikjain360.abnormalarm.notifications.Notifications
 import com.abhikjain360.abnormalarm.reliability.Reliability
 import com.google.android.gms.auth.api.identity.Identity
@@ -228,14 +229,14 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
             HorizontalDivider()
-            ReliabilitySection()
+            ReliabilitySection(settings, vm)
         }
     }
 }
 
 /** Passive "Background reliability" status row (DESIGN.md §12) — never pops a dialog by itself. */
 @Composable
-private fun ReliabilitySection() {
+private fun ReliabilitySection(settings: AppSettings, vm: SettingsViewModel) {
     val context = LocalContext.current
     SectionTitle("Background reliability")
 
@@ -269,9 +270,29 @@ private fun ReliabilitySection() {
         }) { Text("Allow full-screen") }
     }
 
-    if (Reliability.hasOemAutostart()) {
-        StatusRow("Autostart", "Open settings")
-        Button(onClick = { Reliability.openAutostartSettings(context) }) { Text("Open autostart") }
+    if (Reliability.hasOemAutostartManager()) {
+        StatusRow(
+            "Autostart setup",
+            if (settings.autostartSetupConfirmed) "Marked done" else "Manual check",
+        )
+        Text(
+            "The system does not report autostart state to apps. If you enabled it in system " +
+                "settings, mark it done here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { Reliability.openAutostartSettings(context) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Open autostart") }
+            OutlinedButton(
+                onClick = { vm.setAutostartSetupConfirmed(!settings.autostartSetupConfirmed) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (settings.autostartSetupConfirmed) "Mark unchecked" else "Mark done")
+            }
+        }
     }
 }
 

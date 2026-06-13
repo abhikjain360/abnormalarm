@@ -23,8 +23,13 @@ object Reliability {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    /** True if the OEM is one we know ships an aggressive autostart manager (MIUI/HyperOS family). */
-    fun hasOemAutostart(): Boolean {
+    /**
+     * True if the OEM is one we know ships an aggressive autostart manager (MIUI/HyperOS family).
+     *
+     * This only detects that a manual autostart screen probably exists. Android/OEMs do not expose
+     * a stable public API for reading whether this app's autostart toggle is currently enabled.
+     */
+    fun hasOemAutostartManager(): Boolean {
         val m = (Build.MANUFACTURER + " " + Build.BRAND).lowercase()
         return listOf("xiaomi", "poco", "redmi", "oppo", "vivo", "oneplus", "realme").any { it in m }
     }

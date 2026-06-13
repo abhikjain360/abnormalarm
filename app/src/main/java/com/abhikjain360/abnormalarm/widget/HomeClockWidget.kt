@@ -16,10 +16,11 @@ import com.abhikjain360.abnormalarm.scheduling.DirectBoot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.time.LocalDate
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 
 class HomeClockWidget : AppWidgetProvider() {
@@ -123,7 +124,25 @@ class HomeClockWidget : AppWidgetProvider() {
             }
             views.setViewVisibility(containerId, View.VISIBLE)
             views.setString(clockId, "setTimeZone", zoneId)
-            views.setTextViewText(labelId, label.ifBlank { defaultZoneLabel(zoneId) })
+            views.setTextViewText(labelId, secondaryZoneLabel(zoneId, label))
+        }
+
+        internal fun secondaryZoneLabel(
+            zoneId: String,
+            label: String,
+            referenceInstant: Instant = Instant.now(),
+            localZone: ZoneId = ZoneId.systemDefault(),
+        ): String {
+            val zone = runCatching { ZoneId.of(zoneId) }.getOrDefault(localZone)
+            val base = label.ifBlank { defaultZoneLabel(zoneId) }
+            val localDate = referenceInstant.atZone(localZone).toLocalDate()
+            val zoneDate = referenceInstant.atZone(zone).toLocalDate()
+            return if (zoneDate == localDate) {
+                base
+            } else {
+                val day = zoneDate.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
+                "$base · $day"
+            }
         }
 
         private suspend fun nextAlarmText(context: Context): String {
@@ -170,8 +189,19 @@ class HomeClockWidget : AppWidgetProvider() {
 
         private fun scheduleNextDateRefresh(context: Context, ids: IntArray) {
             if (ids.isEmpty()) return
-            val nextMidnight = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault())
-                .plusSeconds(2)
+            val zones = buildSet {
+                add(ZoneId.systemDefault())
+                ids.forEach { id ->
+                    val config = HomeClockWidgetPrefs.load(context, id)
+                    listOfNotNull(config.zoneOneId, config.zoneTwoId).forEach { zoneId ->
+                        runCatching { ZoneId.of(zoneId) }.getOrNull()?.let(::add)
+                    }
+                }
+            }
+            val nextRefresh = zones.minOf { zone ->
+                ZonedDateTime.now(zone).toLocalDate().plusDays(1).atStartOfDay(zone)
+                    .toInstant()
+            }.plusSeconds(2)
             val intent = Intent(context, HomeClockWidget::class.java).apply { action = ACTION_REFRESH }
             val pending = PendingIntent.getBroadcast(
                 context,
@@ -180,7 +210,7 @@ class HomeClockWidget : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             context.getSystemService(AlarmManager::class.java)
-                .set(AlarmManager.RTC, nextMidnight.toInstant().toEpochMilli(), pending)
+                .set(AlarmManager.RTC, nextRefresh.toEpochMilli(), pending)
         }
 
         private fun cancelDateRefresh(context: Context) {

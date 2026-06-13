@@ -2,8 +2,10 @@ package com.abhikjain360.abnormalarm.widget
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.Locale
 
 class HomeClockWidgetTest {
     private val zone = ZoneId.of("UTC")
@@ -29,5 +31,32 @@ class HomeClockWidgetTest {
     @Test fun defaultZoneLabelUsesLastPathSegment() {
         assertEquals("Los Angeles", defaultZoneLabel("America/Los_Angeles"))
         assertEquals("Delhi", defaultZoneLabel("Asia/Kolkata"))
+    }
+
+    @Test fun secondaryZoneLabelAddsDayOnlyWhenDateDiffers() {
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        try {
+            assertEquals(
+                "Tokyo · Sat",
+                HomeClockWidget.secondaryZoneLabel(
+                    zoneId = "Asia/Tokyo",
+                    label = "Tokyo",
+                    referenceInstant = Instant.parse("2026-06-12T23:30:00Z"),
+                    localZone = ZoneId.of("UTC"),
+                ),
+            )
+            assertEquals(
+                "London",
+                HomeClockWidget.secondaryZoneLabel(
+                    zoneId = "Europe/London",
+                    label = "",
+                    referenceInstant = Instant.parse("2026-06-12T12:00:00Z"),
+                    localZone = ZoneId.of("UTC"),
+                ),
+            )
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
     }
 }
