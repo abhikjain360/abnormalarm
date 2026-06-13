@@ -101,6 +101,13 @@ class AlarmScheduler(
         alarmManager.cancel(pi)
         val at = triggerMillis - upcomingLeadMinutes * 60_000L
         if (at > System.currentTimeMillis()) {
+            // The lead window hasn't started yet, so any Upcoming notification still posted is stale
+            // (e.g. the user skipped/edited a repeating alarm mid-lead-window). Clear it — a fresh one
+            // re-posts when the trigger below fires. On API 36+ that notification is an ongoing,
+            // non-dismissible Live Update, so leaving it would strand a wrong countdown. We only clear
+            // here (at > now), never when already inside the lead window, so reopening the app during
+            // the lead window keeps the genuinely-showing live update intact.
+            Notifications.cancelUpcoming(context, alarm.id)
             // RTC (not RTC_WAKEUP): it's just a notification, no need to leave Doze for it.
             alarmManager.set(AlarmManager.RTC, at, pi)
         }

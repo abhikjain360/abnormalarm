@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.abhikjain360.abnormalarm.R
 import com.abhikjain360.abnormalarm.scheduling.AlarmIntents
@@ -41,10 +42,17 @@ object Notifications {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
+        // DEFAULT importance (not LOW) so the Android 16 (API 36) promoted-ongoing live-update chip
+        // posted from postUpcoming() is eligible to show in the status bar — a live update needs at
+        // least DEFAULT importance. Silenced (no sound, no vibration) so the upcoming notification
+        // stays quiet up to an hour before the alarm. Safe to change importance here: this app is
+        // pre-release v0.1.0 with no installed base, so there is no channel-migration concern.
         val upcoming = NotificationChannel(
-            CHANNEL_UPCOMING, "Upcoming alarm", NotificationManager.IMPORTANCE_LOW,
+            CHANNEL_UPCOMING, "Upcoming alarm", NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
             description = "Your next alarm shortly before it rings, with a Skip action"
+            setSound(null, null)
+            enableVibration(false)
         }
 
         val missed = NotificationChannel(
@@ -70,16 +78,30 @@ object Notifications {
             skipIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL_UPCOMING)
+        val builder = NotificationCompat.Builder(context, CHANNEL_UPCOMING)
             .setSmallIcon(R.drawable.ic_alarm)
             .setContentTitle("Upcoming: $title")
             .setContentText(whenText)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
             .addAction(0, "Skip", skip)
-            .build()
+        if (Build.VERSION.SDK_INT >= 36) {
+            // Android 16 (API 36) "Live Updates": promote to an ongoing status-bar chip with a live
+            // chronometer counting down to the fire time. setUsesChronometer + setChronometerCountDown
+            // ticks against setWhen(triggerMillis) entirely in the system UI, so we poll nothing.
+            // Ongoing (not auto-cancel — the two conflict); RingService cancels it when ringing begins.
+            builder
+                .setOngoing(true)
+                .setRequestPromotedOngoing(true)
+                .setWhen(triggerMillis)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+        } else {
+            // Pre-API-36 behavior: a plain dismissible reminder, no chip, no countdown.
+            builder.setAutoCancel(true)
+        }
         context.getSystemService(NotificationManager::class.java)
-            .notify(upcomingId(alarmId), notification)
+            .notify(upcomingId(alarmId), builder.build())
     }
 
     fun cancelUpcoming(context: Context, alarmId: Long) {

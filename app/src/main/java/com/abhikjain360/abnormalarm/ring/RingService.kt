@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.abhikjain360.abnormalarm.R
@@ -111,6 +112,9 @@ class RingService : Service() {
             buildAlarmRingingNotification(id),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
         )
+        // The upcoming Live Update is ongoing on API 36+ and no longer auto-dismisses, so clear it
+        // explicitly now that the alarm is ringing. Idempotent and harmless on all API levels.
+        Notifications.cancelUpcoming(applicationContext, id)
         scope.launch {
             val alarm = loadAlarm(id)
             val settings = alarm?.ring ?: RingSettings()
@@ -241,7 +245,7 @@ class RingService : Service() {
             Intent(this, RingService::class.java).apply { action = AlarmIntents.ACTION_DISMISS },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, Notifications.CHANNEL_RINGING)
+        val builder = NotificationCompat.Builder(this, Notifications.CHANNEL_RINGING)
             .setSmallIcon(R.drawable.ic_alarm)
             .setContentTitle("Alarm")
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -251,7 +255,10 @@ class RingService : Service() {
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .addAction(0, "Dismiss", dismiss)
-            .build()
+        // Android 16 (API 36) "Live Updates": this is an ideal candidate (ongoing, PRIORITY_MAX,
+        // HIGH-importance channel), so promote it to a status-bar chip while ringing.
+        if (Build.VERSION.SDK_INT >= 36) builder.setRequestPromotedOngoing(true)
+        return builder.build()
     }
 
     private fun buildTimerRingingNotification(timer: Timer): Notification {
@@ -275,7 +282,7 @@ class RingService : Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, Notifications.CHANNEL_RINGING)
+        val builder = NotificationCompat.Builder(this, Notifications.CHANNEL_RINGING)
             .setSmallIcon(R.drawable.ic_alarm)
             .setContentTitle("Timer")
             .setContentText(timer.displayLabel())
@@ -286,7 +293,10 @@ class RingService : Service() {
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .addAction(0, "Dismiss", dismiss)
-            .build()
+        // Android 16 (API 36) "Live Updates": this is an ideal candidate (ongoing, PRIORITY_MAX,
+        // HIGH-importance channel), so promote it to a status-bar chip while ringing.
+        if (Build.VERSION.SDK_INT >= 36) builder.setRequestPromotedOngoing(true)
+        return builder.build()
     }
 
     private fun Timer.toIdle(): Timer = copy(

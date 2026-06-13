@@ -12,7 +12,11 @@ notification + Skip, the full-screen-intent gate, and the one-time reliability o
 wired and smoke-tested (create→persist-across-process-death→schedule verified; `setAlarmClock` +
 non-wakeup upcoming trigger confirmed in `dumpsys alarm`). 18 engine unit tests pass. Calendar now has
 two backends: the legacy Android `CalendarContract` provider and a multi-account OAuth-backed Google
-Calendar API fallback, added after the POCO exposed no Google events through `CalendarContract`. The
+Calendar API fallback, added after the POCO exposed no Google events through `CalendarContract`.
+**Android 16 (API 36) features are now adopted:** the Upcoming + ringing notifications use
+promoted-ongoing **Live Updates** (status-bar countdown chip) and Settings surfaces
+`ApplicationExitInfo`/`ApplicationStartInfo` background-kill diagnostics — both gated on
+`SDK_INT >= 36` / degrading cleanly on API 35. The
 remaining work is **on-device acceptance** (especially reliability on the POCO F7 Ultra / HyperOS 2),
 Google Cloud OAuth setup/verification, the empirical checks in `DESIGN.md §14`, and polish. The time picker is
 **24-hour only** (no AM/PM) per the owner's preference — see [[android-alarm-confirmed-decisions]].
@@ -58,8 +62,10 @@ emulator -avd draftbros_-_Pixel_9 &                   # host emulator (or launch
 - **UI** (`ui/`): navigation-compose host; `list/` (alarm list, enable/skip/delete), `edit/`
   (24-hour clock-dial `TimePicker` + expandable Advanced with a full `RepeatPicker` for every mode,
   end condition, ringtone picker, snooze/auto-silence steppers, vibrate/flashlight/ramp toggles),
-  `settings/` (calendar master + per-calendar toggles, lead-time, reliability/FSI status rows),
-  `reliability/ReliabilityOnboarding` (one-time §12 sheet). **Time is 24-hour only — no AM/PM.**
+  `settings/` (calendar master + per-calendar toggles, lead-time, reliability/FSI status rows incl.
+  `StartupDiagnostics` "Last stopped"/"Last started by" kill-diagnostics from `ApplicationExitInfo`/
+  `ApplicationStartInfo`), `reliability/ReliabilityOnboarding` (one-time §12 sheet). **Time is
+  24-hour only — no AM/PM.**
 - **Calendar** (`data/calendar/`): `CalendarRepository` (CalendarContract selection rules + reminder
   expansion w/ 5-min fallback), `GoogleCalendarApiRepository` (Calendar API `calendarList.list` +
   `events.list` over short-lived Google Identity Services tokens, one token per connected account),
@@ -68,7 +74,10 @@ emulator -avd draftbros_-_Pixel_9 &                   # host emulator (or launch
   (~5-hour periodic + unique on-demand). `MainActivity.onResume` enqueues on-demand sync so Google API event
   deletions are reconciled when returning from Google Calendar; Settings Refresh also enqueues sync.
 - **Notifications** (`notifications/Notifications`): 3 channels + upcoming(+Skip)/missed posters +
-  `canUseFullScreenIntent` gate.
+  `canUseFullScreenIntent` gate. On **API 36+** the upcoming notification is a promoted-ongoing
+  **Live Update** (status-bar countdown chip) and the ringing notification requests promotion too —
+  all gated on `SDK_INT >= 36` via `setRequestPromotedOngoing`, with pre-16 behavior preserved. The
+  upcoming channel is `DEFAULT` but silenced so the chip is eligible without noise.
 - **Theme**: Catppuccin Mocha → Material 3 dark, primary = Mauve. Dark only.
 
 ## What's left (no longer code-blocked — verification & release)
@@ -102,11 +111,23 @@ emulator -avd draftbros_-_Pixel_9 &                   # host emulator (or launch
   happen on the owner's **POCO F7 Ultra (HyperOS 2)** — stock Android won't reproduce HyperOS
   background-killing. The §12 onboarding (Autostart + battery "No restrictions") is the manual fix;
   no app can bypass it programmatically.
+- **Android 16 Live Updates need a ≥ `DEFAULT` channel.** A promoted-ongoing notification won't
+  surface as a status-bar chip on a `LOW` channel, so `CHANNEL_UPCOMING` is `DEFAULT` but silenced
+  (sound/vibration off). Because the chip is ongoing/non-dismissible, it MUST be cancelled on
+  ring/skip/disable/delete/edit — `AlarmScheduler.scheduleUpcoming` clears stale chips when re-arming
+  a *future* lead trigger (never when already inside the lead window, so app-reopen mid-window keeps a
+  valid chip). Promotion = `NotificationCompat.Builder.setRequestPromotedOngoing(true)` (androidx.core
+  1.17), gated on `SDK_INT >= 36`. Chip visibility on HyperOS is unverified (`DESIGN.md §14`).
+- **Newest-API signatures are easy to guess wrong.** `ActivityManager.getHistoricalProcessStartReasons`
+  takes only `(maxNum: Int)` (own-package), and `ApplicationStartInfo` exposes `getReason()` (not
+  `getStartReason()`). Verify against `$ANDROID_HOME/platforms/android-36/android.jar` with `javap`
+  before building.
 - **Debug APK is ~65 MB** (unshrunk; `material-icons-extended` + Compose tooling). Release R8 +
   resource shrinking cut this hugely. If size matters, drop `material-icons-extended` and use only
   the icons you need. Note: APK size ≠ the runtime-RAM goal, which this architecture already meets.
 
 ## Layout
 `domain/` pure model + engine · `data/` persistence · `scheduling/` exact-alarm core ·
-`ring/` ring service/activity/ringer · `notifications/` channels · `ui/` Compose + theme ·
-`App.kt` DI container + Application · `MainActivity.kt` single activity.
+`ring/` ring service/activity/ringer · `notifications/` channels · `reliability/` OEM deep-links +
+kill diagnostics · `ui/` Compose + theme · `App.kt` DI container + Application · `MainActivity.kt`
+single activity.

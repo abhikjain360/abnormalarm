@@ -48,6 +48,7 @@ import com.abhikjain360.abnormalarm.data.calendar.GoogleCalendarApiRepository
 import com.abhikjain360.abnormalarm.data.settings.AppSettings
 import com.abhikjain360.abnormalarm.notifications.Notifications
 import com.abhikjain360.abnormalarm.reliability.Reliability
+import com.abhikjain360.abnormalarm.reliability.StartupDiagnostics
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
 
@@ -254,6 +255,27 @@ private fun ReliabilitySection(settings: AppSettings, vm: SettingsViewModel) {
     }
 
     StatusRow("Next alarm registered", if (nextAlarm) "Yes" else "None")
+
+    // Background-kill diagnostics (DESIGN.md §12): ApplicationExitInfo lets us detect and explain
+    // recent external/background stops so the owner knows when autostart / battery exemptions help.
+    val lastExit = remember { StartupDiagnostics.lastExit(context) }
+    if (lastExit != null) {
+        StatusRow("Last stopped", "${lastExit.reasonLabel} · ${lastExit.whenText}")
+        if (lastExit.isBackgroundStop) {
+            val stops = remember { StartupDiagnostics.recentBackgroundStopCount(context) }
+            Text(
+                "The system has stopped Abnormalarm in the background" +
+                    (if (stops > 1) " $stops times recently" else " recently") +
+                    ". Allowing autostart and removing battery limits helps your alarms ring on time.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    val lastStartReason = remember { StartupDiagnostics.lastStartReason(context) }
+    if (lastStartReason != null) {
+        StatusRow("Last started by", lastStartReason)
+    }
 
     // Full-screen-intent gate (DESIGN.md §10/§13): if withheld, the ring screen degrades to a
     // heads-up notification, so offer a deep-link to re-enable it.

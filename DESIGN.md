@@ -221,9 +221,11 @@ but their UX is timer-specific:
 ## 7. Notifications
 
 Three notification types (Material, Mocha-tinted):
-- **Upcoming** — appears within a **configurable lead window before the alarm (default 1 h)**; carries a **Skip** action. Scheduled via a separate lightweight (non-wakeup) trigger at `fireTime − leadWindow`, so it costs nothing until then.
+- **Upcoming** — appears within a **configurable lead window before the alarm (default 1 h)**; carries a **Skip** action. Scheduled via a separate lightweight (non-wakeup) trigger at `fireTime − leadWindow`, so it costs nothing until then. On **Android 16 (API 36+)** it is promoted to an ongoing **Live Update**: a status-bar chip with a system-driven chronometer counting down to the fire time (no app polling). Being ongoing it is non-dismissible, so it is cleared explicitly when the alarm rings, is skipped, or is disabled/deleted/edited (`AlarmScheduler.scheduleUpcoming` clears any stale posted chip when it re-arms a *future* lead trigger, never when already inside the lead window).
 - **Missed** — posted when an alarm auto-silences un-dismissed, so you know you slept through it.
-- **Ringing** — the foreground-service notification backing the full-screen ring activity.
+- **Ringing** — the foreground-service notification backing the full-screen ring activity. On **Android 16 (API 36+)** it also requests promoted-ongoing treatment (it is already ongoing + max-priority on a high-importance channel) for an elevated lock-screen / always-on-display / status-bar chip.
+
+**Android 16 "Live Updates":** promoted-ongoing notifications require the install-time `POST_PROMOTED_NOTIFICATIONS` permission, an ongoing notification with a content title and **no** custom RemoteViews, and a channel of at least `IMPORTANCE_DEFAULT`. The Upcoming channel is therefore `DEFAULT` but **silenced** (no sound/vibration) so the chip is eligible without making noise an hour early — safe to change because the app is pre-release with no installed base. Promotion uses `NotificationCompat.Builder.setRequestPromotedOngoing(true)` and is gated on `Build.VERSION.SDK_INT >= 36`; on API 35 the behavior is unchanged (a plain, dismissible reminder). Chip visibility on HyperOS is an on-device verification item (§14).
 
 **Skip next occurrence:** every alarm (manual *and* calendar) exposes "skip next" both **in-app** and **from the Upcoming notification**, pre-emptively (before it rings). Skipping advances the series by one occurrence; the alarm resumes normally after. **No** global/group skip — it's strictly per-alarm.
 
@@ -286,6 +288,7 @@ M3 role mapping (initial): `primary`=Mauve, `background`=Base, `surface`=Mantle,
 | `USE_EXACT_ALARM` | exact alarms (alarm-clock app) | none (install-time normal) |
 | `RECEIVE_BOOT_COMPLETED` | reschedule after reboot | none |
 | `POST_NOTIFICATIONS` | all notifications (API 33+) | runtime, once |
+| `POST_PROMOTED_NOTIFICATIONS` | promoted-ongoing Live Updates (API 36) | none (install-time normal) |
 | `USE_FULL_SCREEN_INTENT` | ring screen over lock screen | see note |
 | `FOREGROUND_SERVICE` + type | ringing service | none |
 | `READ_CALENDAR` | calendar feed | runtime, only when feature enabled |
@@ -336,6 +339,8 @@ emulator -avd draftbros_-_Pixel_9 &     # or launch from Android Studio
 
 **Ongoing — no nagging.** Instead of re-prompting, a passive **"Background reliability"** row in Settings always reflects current detectable status (battery-optimization on/off; "next alarm registered?" read from `AlarmManager.getNextAlarmClock()`), with the same deep-link buttons. So if a system update silently resets a toggle, you can re-check **on your own terms** — the app updates this row via a silent on-open self-check but **never** pops a dialog for it again.
 
+**Kill diagnostics (read-only, no permission).** `reliability/StartupDiagnostics` reads `ApplicationExitInfo` (`getHistoricalProcessExitReasons`) and `ApplicationStartInfo` (`getHistoricalProcessStartReasons`, API 35) for the app's own package — no permission needed — to *explain* recent behavior in the same Settings section: a **"Last stopped"** line (neutral reason + time, with a count when the system has stopped the app repeatedly) and a **"Last started by"** line (e.g. "Alarm" — confirms the OS is cold-starting us to ring). These cannot *prevent* OEM background-killing; they make it visible, so the owner can tell when allowing autostart / removing battery limits is actually paying off. Framing stays neutral (never names or blames the manufacturer). Which `REASON_*` code HyperOS emits for its background kills is an on-device verification item (§14).
+
 **Honest limit (stated in-app once, neutrally):** autostart/force-stop are OS-enforced and can't be flipped programmatically by any app, and may reset after a major system update; the Settings status row is the quiet way to notice and re-fix.
 
 ---
@@ -366,6 +371,12 @@ emulator -avd draftbros_-_Pixel_9 &     # or launch from Android Studio
    API enabled, every connected account added as a test user while consent is in Testing, and the
    Settings "Add account" flow.
 6. **Acceptance testing must run on the real POCO F7 Ultra**, not just the Pixel 9 emulator — stock Android won't reproduce HyperOS background behavior. Pixel emulator = dev/iteration; POCO = reliability acceptance.
+7. **Android 16 Live Update chip visibility**: confirm the silenced `IMPORTANCE_DEFAULT` Upcoming
+   channel (and the ringing notification) actually render as a status-bar / AOD chip on HyperOS 2. If
+   not, raise importance or accept shade-only — promotion is best-effort and the OS decides.
+8. **`ApplicationExitInfo` reason codes on HyperOS**: verify which `REASON_*` constant HyperOS reports
+   for its background kills (likely `SIGNALED`/`OTHER`/`USER_REQUESTED`) so the "Last stopped"
+   classification in `StartupDiagnostics` reads accurately on the real device.
 
 ---
 
