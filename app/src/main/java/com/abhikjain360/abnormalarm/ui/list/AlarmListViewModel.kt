@@ -40,18 +40,30 @@ class AlarmListViewModel(
         repository.delete(id)
     }
 
+    /** Re-insert a swipe-deleted alarm (Undo). The row is gone, so force a fresh insert. */
+    fun restore(alarm: Alarm) = viewModelScope.launch {
+        val id = repository.upsert(alarm.copy(id = 0L))
+        val restored = alarm.copy(id = id)
+        if (restored.enabled) scheduler.schedule(restored)
+    }
+
     /** Pre-emptively skip the next occurrence of an alarm (DESIGN.md §7). */
     fun skipNext(id: Long) = viewModelScope.launch {
         val alarm = repository.get(id) ?: return@launch
-        val next = scheduler.computeTrigger(alarm) ?: return@launch
         val oneShot = alarm.repeat == RepeatRule.Once || alarm.repeat is RepeatRule.OnceOnDate
-        val updated = if (oneShot) {
-            alarm.copy(enabled = false, skipNextInstantMillis = null)
-        } else {
-            alarm.copy(skipNextInstantMillis = next.toInstant().toEpochMilli())
+        if (oneShot) {
+            repository.upsert(alarm.copy(enabled = false, skipNextInstantMillis = null))
+            scheduler.cancel(id)
+            return@launch
         }
+        // Target the genuine next fire, computed *ignoring* any existing skip, so repeated
+        // calls are idempotent (they all land on the same upcoming occurrence rather than
+        // marching forward one fire at a time).
+        val base = alarm.copy(skipNextInstantMillis = null)
+        val next = scheduler.computeTrigger(base) ?: return@launch
+        val updated = alarm.copy(skipNextInstantMillis = next.toInstant().toEpochMilli())
         repository.upsert(updated)
-        if (oneShot) scheduler.cancel(id) else scheduler.schedule(updated)
+        scheduler.schedule(updated)
     }
 
     companion object {
