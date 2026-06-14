@@ -104,7 +104,7 @@ fun RepeatPickerDialog(
     var inDetail by remember { mutableStateOf(false) }
 
     // Parameter state, seeded from the current rule where it matches.
-    var nDays by remember { mutableIntStateOf((current as? RepeatRule.EveryNDays)?.n ?: 2) }
+    var nDays by remember { mutableIntStateOf((current as? RepeatRule.EveryNDays)?.n ?: 1) }
     var nWeeks by remember { mutableIntStateOf((current as? RepeatRule.EveryNWeeksOnDays)?.n ?: 2) }
     var nMonths by remember { mutableIntStateOf((current as? RepeatRule.EveryNMonthsOnDate)?.n ?: 2) }
     val selectedDays = remember {

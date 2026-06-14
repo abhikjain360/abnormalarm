@@ -34,6 +34,23 @@ object Reliability {
         return listOf("xiaomi", "poco", "redmi", "oppo", "vivo", "oneplus", "realme").any { it in m }
     }
 
+    /**
+     * "Display over other apps" — IS queryable, so the step is shown only when not yet granted.
+     * Granting it lets [com.abhikjain360.abnormalarm.ring.RingService] launch the full-screen ring
+     * screen directly even while the device is unlocked and in use, and on OEMs that throttle
+     * full-screen intents. Without it the ring screen falls back to a full-screen-intent / heads-up.
+     */
+    fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+
+    /** Deep-links to this app's "display over other apps" screen; falls back to App-Info. */
+    fun requestDrawOverlays(context: Context) {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            "package:${context.packageName}".toUri(),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (!tryStart(context, intent)) openAppInfo(context)
+    }
+
     /** Opens the system "ignore battery optimizations" dialog; falls back to App-Info. */
     fun requestIgnoreBatteryOptimizations(context: Context) {
         @Suppress("BatteryLife")

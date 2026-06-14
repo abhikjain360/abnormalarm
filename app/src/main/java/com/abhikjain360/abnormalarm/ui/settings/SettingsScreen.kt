@@ -277,6 +277,23 @@ private fun ReliabilitySection(settings: AppSettings, vm: SettingsViewModel) {
         StatusRow("Last started by", lastStartReason)
     }
 
+    // "Display over other apps": lets the ring screen open full-screen even while the device is
+    // unlocked/in use and on OEMs that throttle full-screen intents. The single most reliable lever
+    // for "the alarm/timer opens full-screen every time", so surface it prominently.
+    var overlayOk by remember { mutableStateOf(Reliability.canDrawOverlays(context)) }
+    StatusRow("Ring screen over other apps", if (overlayOk) "Allowed" else "Off")
+    if (!overlayOk) {
+        Text(
+            "Lets alarms and timers open full-screen even while you're using the phone or it's locked.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = {
+            Reliability.requestDrawOverlays(context)
+            overlayOk = Reliability.canDrawOverlays(context)
+        }) { Text("Allow display over apps") }
+    }
+
     // Full-screen-intent gate (DESIGN.md §10/§13): if withheld, the ring screen degrades to a
     // heads-up notification, so offer a deep-link to re-enable it.
     val fsiOk = remember { Notifications.canUseFullScreenIntent(context) }

@@ -118,6 +118,14 @@ emulator -avd draftbros_-_Pixel_9 &                   # host emulator (or launch
   a *future* lead trigger (never when already inside the lead window, so app-reopen mid-window keeps a
   valid chip). Promotion = `NotificationCompat.Builder.setRequestPromotedOngoing(true)` (androidx.core
   1.17), gated on `SDK_INT >= 36`. Chip visibility on HyperOS is unverified (`DESIGN.md §14`).
+- **Full-screen intent alone does NOT reliably open the ring screen.** A `setFullScreenIntent` only
+  auto-launches the activity when the keyguard is locked or the screen is off; while the device is
+  unlocked/interactive (every short timer) the OS shows a heads-up instead, and HyperOS throttles it
+  even when locked. Fix: `RingService` *also* `startActivity`s `RingActivity` directly (one shared
+  `ringActivityIntent`/`launchRingActivity`, used by both alarm + timer), backed by
+  **`SYSTEM_ALERT_WINDOW`** ("display over other apps") for the unlocked case — offered in the §12
+  onboarding and Settings → Background reliability. The FSI stays as the locked/screen-off fallback.
+  Don't regress back to FSI-only.
 - **Newest-API signatures are easy to guess wrong.** `ActivityManager.getHistoricalProcessStartReasons`
   takes only `(maxNum: Int)` (own-package), and `ApplicationStartInfo` exposes `getReason()` (not
   `getStartReason()`). Verify against `$ANDROID_HOME/platforms/android-36/android.jar` with `javap`

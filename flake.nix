@@ -33,6 +33,10 @@
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
             # Gradle reads sdk.dir from local.properties or ANDROID_HOME; we rely on ANDROID_HOME.
+            # Disable adb's mDNS/Bonjour wireless-debugging discovery: on macOS it can wedge the adb
+            # server so `adb devices` hangs forever. We don't use wireless debugging here. If a server
+            # was already started without this, kill it: `pkill -9 -f 'adb -L tcp:5037'` then re-run.
+            export ADB_MDNS=0
 
             if [ ! -d "$ANDROID_HOME" ]; then
               echo "⚠️  ANDROID_HOME ($ANDROID_HOME) not found."

@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- Full-screen alarm screen over the lock screen. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- "Display over other apps": lets RingService launch the full-screen ring activity directly,
+         even while the device is unlocked and in use (when a full-screen intent would only show a
+         heads-up) and on OEMs that throttle full-screen intents. Runtime-granted via a system screen. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Required for ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS in the reliability setup. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Foreground service while ringing (audio playback type). -->

@@ -1,6 +1,7 @@
 package com.abhikjain360.abnormalarm.ring
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import android.content.Intent
@@ -46,6 +47,8 @@ class RingActivity : ComponentActivity() {
         // Show over the lock screen and wake the display (belt-and-suspenders with the manifest attrs).
         setShowWhenLocked(true)
         setTurnScreenOn(true)
+        // Keep the screen on for as long as the ring screen is up so it can't doze back off mid-ring.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         render(intent)
     }
 

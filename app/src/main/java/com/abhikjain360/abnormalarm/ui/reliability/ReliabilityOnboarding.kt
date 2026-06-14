@@ -45,6 +45,7 @@ fun ReliabilityOnboarding() {
         val settings = container.settingsRepository.current()
         if (settings.reliabilityPromptShown) return@LaunchedEffect
         val actionable = !Reliability.isIgnoringBatteryOptimizations(context) ||
+            !Reliability.canDrawOverlays(context) ||
             Reliability.hasOemAutostartManager()
         // Mark shown regardless — we only ever consider it once (the §12 guarantee).
         container.settingsRepository.setReliabilityPromptShown(true)
@@ -63,8 +64,9 @@ fun ReliabilityOnboarding() {
         ) {
             Text("Keep alarms on time", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "To make sure your alarms ring exactly on time, let Abnormalarm start " +
-                    "automatically and run without battery limits.",
+                "To make sure your alarms and timers ring exactly on time and open full-screen, let " +
+                    "Abnormalarm start automatically, run without battery limits, and display over " +
+                    "other apps.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -74,6 +76,12 @@ fun ReliabilityOnboarding() {
                     onClick = { Reliability.requestIgnoreBatteryOptimizations(context) },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Run without battery limits") }
+            }
+            if (!Reliability.canDrawOverlays(context)) {
+                Button(
+                    onClick = { Reliability.requestDrawOverlays(context) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Allow full-screen ring screen") }
             }
             if (Reliability.hasOemAutostartManager()) {
                 OutlinedButton(

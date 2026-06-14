@@ -115,6 +115,7 @@ class RingService : Service() {
         // The upcoming Live Update is ongoing on API 36+ and no longer auto-dismisses, so clear it
         // explicitly now that the alarm is ringing. Idempotent and harmless on all API levels.
         Notifications.cancelUpcoming(applicationContext, id)
+        launchRingActivity(AlarmIntents.RING_KIND_ALARM, id)
         scope.launch {
             val alarm = loadAlarm(id)
             val settings = alarm?.ring ?: RingSettings()
@@ -143,6 +144,7 @@ class RingService : Service() {
             buildTimerRingingNotification(timer),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
         )
+        launchRingActivity(AlarmIntents.RING_KIND_TIMER, id)
         if (restartRinger) startRinger(timer.ring)
         scheduleAutoSilence(active, timer.ring) {
             saveTimer(timer.toIdle())
@@ -228,15 +230,38 @@ class RingService : Service() {
         super.onDestroy()
     }
 
+    /** Single source of truth for the intent that opens the full-screen ring screen. */
+    private fun ringActivityIntent(kind: String, id: Long): Intent =
+        Intent(this, RingActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(AlarmIntents.EXTRA_RING_KIND, kind)
+            if (kind == AlarmIntents.RING_KIND_TIMER) {
+                putExtra(AlarmIntents.EXTRA_TIMER_ID, id)
+            } else {
+                putExtra(AlarmIntents.EXTRA_ALARM_ID, id)
+            }
+        }
+
+    /**
+     * Launch the full-screen ring screen directly, in addition to the notification's full-screen
+     * intent. The full-screen intent only surfaces the activity when the keyguard is locked or the
+     * screen is off; while the device is unlocked and interactive (the common timer case) the OS
+     * downgrades it to a heads-up, and some OEMs (e.g. HyperOS) throttle it even when locked. Starting
+     * the activity here makes the splash appear consistently. This requires either the short-lived
+     * background-activity-launch grant a foreground service started from an exact alarm carries, or —
+     * for the unlocked/interactive case — the SYSTEM_ALERT_WINDOW ("display over other apps") grant.
+     * If background activity launch is blocked it is a silent no-op and the full-screen intent still
+     * covers the locked/screen-off path, so this never regresses behavior.
+     */
+    private fun launchRingActivity(kind: String, id: Long) {
+        runCatching { startActivity(ringActivityIntent(kind, id)) }
+    }
+
     private fun buildAlarmRingingNotification(id: Long): Notification {
         val fullScreen = PendingIntent.getActivity(
             this,
             id.toInt(),
-            Intent(this, RingActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra(AlarmIntents.EXTRA_ALARM_ID, id)
-                putExtra(AlarmIntents.EXTRA_RING_KIND, AlarmIntents.RING_KIND_ALARM)
-            },
+            ringActivityIntent(AlarmIntents.RING_KIND_ALARM, id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val dismiss = PendingIntent.getService(
@@ -265,11 +290,7 @@ class RingService : Service() {
         val fullScreen = PendingIntent.getActivity(
             this,
             timerNotificationRequestCode(timer.id),
-            Intent(this, RingActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                putExtra(AlarmIntents.EXTRA_TIMER_ID, timer.id)
-                putExtra(AlarmIntents.EXTRA_RING_KIND, AlarmIntents.RING_KIND_TIMER)
-            },
+            ringActivityIntent(AlarmIntents.RING_KIND_TIMER, timer.id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val dismiss = PendingIntent.getService(

@@ -191,7 +191,7 @@ consent and a scoped access token.
 When an alarm fires, `AlarmReceiver`:
 1. Grabs a short wakelock, **immediately computes + schedules the next occurrence** (so a crash mid-ring can't break the series).
 2. Starts `RingService` (foreground) which owns the sound/vibration/torch.
-3. Launches `RingActivity` via a **full-screen intent** so it shows over the lock screen.
+3. Surfaces `RingActivity` two ways for reliability: it **directly `startActivity`s** the ring screen *and* sets a **full-screen intent** on the ringing notification. The full-screen intent only auto-launches the activity when the keyguard is locked or the screen is off — while the device is unlocked and interactive (the common timer case) the OS downgrades it to a heads-up, and some OEMs (HyperOS) throttle it even when locked. The direct launch makes the splash appear *consistently* whether the phone is locked, off, or in active use. It relies on the short-lived background-activity-launch grant a foreground service started from an exact alarm carries and, for the unlocked/interactive case, the **`SYSTEM_ALERT_WINDOW`** ("display over other apps") grant; if background activity launch is blocked it is a silent no-op and the full-screen intent still covers the locked/screen-off path. `RingActivity` itself uses `showWhenLocked` + `turnScreenOn` (manifest attrs and the API calls) and `FLAG_KEEP_SCREEN_ON`. Timers go through the exact same path.
 
 **Ring behavior (all per-alarm, defaults in bold):**
 | Setting | Default | Configurable |
@@ -290,10 +290,11 @@ M3 role mapping (initial): `primary`=Mauve, `background`=Base, `surface`=Mantle,
 | `POST_NOTIFICATIONS` | all notifications (API 33+) | runtime, once |
 | `POST_PROMOTED_NOTIFICATIONS` | promoted-ongoing Live Updates (API 36) | none (install-time normal) |
 | `USE_FULL_SCREEN_INTENT` | ring screen over lock screen | see note |
+| `SYSTEM_ALERT_WINDOW` | launch the ring screen full-screen even while unlocked/in-use and on OEMs that throttle full-screen intents | runtime, via a system screen (offered in onboarding + Settings) |
 | `FOREGROUND_SERVICE` + type | ringing service | none |
 | `READ_CALENDAR` | calendar feed | runtime, only when feature enabled |
 
-**⚠️ Full-screen intent on Android 14+:** the grant is auto-given to apps whose core function is alarms/calling, but we'll defensively check `NotificationManager.canUseFullScreenIntent()` and, if denied, deep-link the user to enable it and fall back to a high-priority heads-up notification. **To verify on the Pixel 9 emulator (API 35).**
+**⚠️ Full-screen intent on Android 14+:** the grant is auto-given to apps whose core function is alarms/calling, but we'll defensively check `NotificationManager.canUseFullScreenIntent()` and, if denied, deep-link the user to enable it. Because the full-screen intent alone is unreliable (downgraded to a heads-up while unlocked/interactive; throttled on some OEMs), `RingService` *also* directly `startActivity`s the ring screen, backed by **`SYSTEM_ALERT_WINDOW`** for the unlocked/in-use case (see §6). Both the full-screen-intent gate and the "display over other apps" grant surface as status rows + deep-links in onboarding and Settings → Background reliability.
 
 **⚠️ Foreground-service type:** Android 14+ requires a declared FGS type. We'll use **`mediaPlayback`** (we are playing alarm audio) or `specialUse` with justification — **to verify which the platform accepts cleanly for an alarm started from an exact-alarm broadcast.** Apps holding exact-alarm permission are exempt from the background-FGS-start restriction when the service is started from the alarm.
 

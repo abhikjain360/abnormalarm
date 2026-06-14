@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZonedDateTime
 
 /** One alarm as the list renders it: the domain alarm plus its computed next fire instant. */
@@ -20,13 +21,29 @@ data class AlarmRow(val alarm: Alarm, val nextFire: ZonedDateTime?) {
     val isCalendar: Boolean get() = alarm.source == AlarmSource.CALENDAR
 }
 
+internal fun alarmRowsSortedByNextFire(
+    alarms: List<Alarm>,
+    computeNextFire: (Alarm) -> ZonedDateTime?,
+): List<AlarmRow> =
+    alarms
+        .map { alarm ->
+            val nextFire = if (alarm.enabled) computeNextFire(alarm) else null
+            AlarmRow(alarm, nextFire)
+        }
+        .sortedWith(
+            compareBy<AlarmRow> { it.nextFire == null }
+                .thenBy { it.nextFire?.toInstant() ?: Instant.MAX }
+                .thenBy { it.alarm.time }
+                .thenBy { it.alarm.id },
+        )
+
 class AlarmListViewModel(
     private val repository: AlarmRepository,
     private val scheduler: AlarmScheduler,
 ) : ViewModel() {
 
     val rows: StateFlow<List<AlarmRow>> = repository.observeAll()
-        .map { alarms -> alarms.map { AlarmRow(it, scheduler.computeTrigger(it)) } }
+        .map { alarms -> alarmRowsSortedByNextFire(alarms, scheduler::computeTrigger) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setEnabled(id: Long, enabled: Boolean) = viewModelScope.launch {

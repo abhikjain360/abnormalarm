@@ -40,8 +40,12 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,6 +114,7 @@ fun AlarmListScreen(
             ) {
                 items(rows, key = { it.alarm.id }) { row ->
                     AlarmCard(
+                        modifier = Modifier.animateItem(),
                         row = row,
                         onToggle = { vm.setEnabled(row.alarm.id, it) },
                         onSkip = { vm.skipNext(row.alarm.id) },
@@ -141,19 +146,22 @@ private fun AlarmCard(
     onSkip: () -> Unit,
     onDelete: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // Swipe right = skip the next ring (only meaningful while enabled); swipe left = delete.
     // Calendar rows aren't deletable — CalendarSync would just recreate them on the next pass.
     val canSkip = row.alarm.enabled
     val canDelete = !row.isCalendar
+    // Becomes true when the skip threshold is crossed; cleared after snap-back completes.
+    var skipPending by remember { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
                 // Skip snaps back instead of dismissing (the alarm stays in the list).
-                // confirmValueChange can fire several times per gesture, but skipNext is
-                // idempotent, so calling it more than once is harmless.
+                // We defer onSkip() until the snap-back animation settles so the resulting
+                // list reorder doesn't happen while the gesture is still in flight.
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    if (canSkip) onSkip()
+                    if (canSkip) skipPending = true
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> canDelete
@@ -166,9 +174,17 @@ private fun AlarmCard(
     LaunchedEffect(dismissState.currentValue) {
         if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) onDelete()
     }
+    // Fire skip only after the snap-back animation reaches position 0, so the list reorder
+    // caused by the repository update doesn't race with the swipe animation.
+    LaunchedEffect(skipPending) {
+        if (!skipPending) return@LaunchedEffect
+        snapshotFlow { dismissState.progress }.first { it < 0.01f }
+        skipPending = false
+        onSkip()
+    }
     SwipeToDismissBox(
         state = dismissState,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         enableDismissFromStartToEnd = canSkip,
         enableDismissFromEndToStart = canDelete,
         backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
