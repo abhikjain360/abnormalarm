@@ -102,6 +102,14 @@ emulator -avd draftbros_-_Pixel_9 &                   # host emulator (or launch
   AGP 9.2 needs Gradle 9.4.1 which the bootstrap Gradle can't configure. To change the wrapper, do
   the same dance (see git history of `gradle/wrapper/`).
 - **Domain must stay Android-free.** Put Room entities/converters in `data/`, never in `domain/`.
+- **M3 `SwipeToDismissBoxState` fires `confirmValueChange` mid-drag** (as soon as the swipe crosses
+  half the distance to an anchor), and after a vetoed settle `progress` reads `1f` forever — so the
+  alarm-list skip/delete can't key off either. `AlarmCard` arms on `confirmValueChange` but fires
+  skip only when the raw pointer is up AND `requireOffset()` is back at ~0 (a `pointerInput`
+  Initial-pass observer watching `pressed`; `waitForUpOrCancellation` returns early because the
+  card's `clickable` consumes the down event, and `currentValue` flips mid-drag so delete keys off
+  `settledValue`). The list also re-pins the viewport on skip (`rememberLazyListState` + anchor
+  restore in `onSkip`) — LazyColumn's key-based retention otherwise scrolls after the moved alarm.
 - **Google Calendar API requires OAuth, not API keys.** API keys only identify a Google Cloud project;
   private user calendar data requires a scoped OAuth access token. This app uses the read-only
   `https://www.googleapis.com/auth/calendar.readonly` scope through Google Identity Services and stores

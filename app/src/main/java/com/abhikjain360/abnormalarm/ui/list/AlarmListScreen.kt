@@ -2,6 +2,8 @@ package com.abhikjain360.abnormalarm.ui.list
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -46,9 +49,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,6 +66,7 @@ import com.abhikjain360.abnormalarm.ui.repeatSummary
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 import java.time.ZonedDateTime
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,7 +112,9 @@ fun AlarmListScreen(
         if (rows.isEmpty()) {
             EmptyState(Modifier.padding(padding))
         } else {
+            val listState = rememberLazyListState()
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
@@ -117,7 +126,37 @@ fun AlarmListScreen(
                         modifier = Modifier.animateItem(),
                         row = row,
                         onToggle = { vm.setEnabled(row.alarm.id, it) },
-                        onSkip = { vm.skipNext(row.alarm.id) },
+                        onSkip = {
+                            // Pin the viewport: remember the first visible card other than the
+                            // skipped one and, once the reorder lands, restore it to the same
+                            // pixel offset — otherwise LazyColumn's key-based scroll retention
+                            // follows the skipped alarm when it is the first visible item and
+                            // the whole screen jumps. If the skipped card sat above the anchor,
+                            // the computed offset is negative and clamps to the list start,
+                            // i.e. the anchor smoothly becomes the new top card.
+                            val visible = listState.layoutInfo.visibleItemsInfo
+                            val anchor = visible.firstOrNull { it.key != row.alarm.id }
+                            vm.skipNext(row.alarm.id)
+                            if (anchor != null) {
+                                val anchorScrollOffset = visible.first().offset +
+                                    listState.firstVisibleItemScrollOffset - anchor.offset
+                                val skippedId = row.alarm.id
+                                val skippedRow = row
+                                scope.launch {
+                                    val landed = withTimeoutOrNull(2_000) {
+                                        snapshotFlow { rows }.first { newRows ->
+                                            newRows.firstOrNull { it.alarm.id == skippedId } != skippedRow
+                                        }
+                                    }
+                                    if (landed != null) {
+                                        val newIndex = rows.indexOfFirst { it.alarm.id == anchor.key }
+                                        if (newIndex >= 0) {
+                                            listState.scrollToItem(newIndex, anchorScrollOffset)
+                                        }
+                                    }
+                                }
+                            }
+                        },
                         onDelete = {
                             val deleted = row.alarm
                             vm.delete(deleted.id)
@@ -152,16 +191,19 @@ private fun AlarmCard(
     // Calendar rows aren't deletable — CalendarSync would just recreate them on the next pass.
     val canSkip = row.alarm.enabled
     val canDelete = !row.isCalendar
-    // Becomes true when the skip threshold is crossed; cleared after snap-back completes.
-    var skipPending by remember { mutableStateOf(false) }
+    // confirmValueChange fires *mid-drag* when the swipe crosses the dismiss threshold, so
+    // skipArmed only records intent. The skip itself must wait until the finger is up and the
+    // card has snapped back to rest — otherwise the resulting list reorder moves the card
+    // while the gesture is still in flight. Dragging back to the origin before releasing
+    // disarms it (the user changed their mind).
+    var skipArmed by remember { mutableStateOf(false) }
+    var pointerDown by remember { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
                 // Skip snaps back instead of dismissing (the alarm stays in the list).
-                // We defer onSkip() until the snap-back animation settles so the resulting
-                // list reorder doesn't happen while the gesture is still in flight.
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    if (canSkip) skipPending = true
+                    if (canSkip) skipArmed = true
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> canDelete
@@ -169,22 +211,46 @@ private fun AlarmCard(
             }
         },
     )
-    // Delete is allowed to settle (the row leaves via the data flow). Fire it once, keyed
-    // on the settled value, so the Undo snackbar isn't posted multiple times.
-    LaunchedEffect(dismissState.currentValue) {
-        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) onDelete()
+    // Delete once the dismiss animation has fully settled (the row then leaves via the data
+    // flow). Keying on currentValue instead would fire mid-drag: currentValue flips to
+    // EndToStart as soon as the swipe crosses the threshold, removing the row under the finger.
+    LaunchedEffect(dismissState.settledValue) {
+        if (dismissState.settledValue == SwipeToDismissBoxValue.EndToStart) onDelete()
     }
-    // Fire skip only after the snap-back animation reaches position 0, so the list reorder
-    // caused by the repository update doesn't race with the swipe animation.
-    LaunchedEffect(skipPending) {
-        if (!skipPending) return@LaunchedEffect
-        snapshotFlow { dismissState.progress }.first { it < 0.01f }
-        skipPending = false
-        onSkip()
+    LaunchedEffect(skipArmed) {
+        if (!skipArmed) return@LaunchedEffect
+        // Wait for the card to return to rest, then fire only if the pointer is already up
+        // (a committed swipe whose snap-back just finished). If the offset is back at ~0
+        // while the finger is still down, the user dragged back — disarm without skipping.
+        // (dismissState.progress is useless here: after the vetoed settle it reads 1f.)
+        val stillDown = snapshotFlow { pointerDown to dismissState.requireOffset() }
+            .first { (_, offset) -> abs(offset) < 2f }
+            .first
+        skipArmed = false
+        if (!stillDown) onSkip()
     }
     SwipeToDismissBox(
         state = dismissState,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // Initial-pass observer only (nothing is consumed): tracks whether the finger is
+            // still down so the skip above can tell "released past the threshold" apart from
+            // "dragged back to the origin". Placed before anchoredDraggable in the chain so it
+            // sees the raw down/up events first.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    pointerDown = true
+                    // Watch the raw pressed state until every pointer is physically up.
+                    // (waitForUpOrCancellation bails early here: the card's clickable consumes
+                    // the down event, which it treats as a cancellation.)
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.all { !it.pressed }) break
+                    }
+                    pointerDown = false
+                }
+            },
         enableDismissFromStartToEnd = canSkip,
         enableDismissFromEndToStart = canDelete,
         backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
